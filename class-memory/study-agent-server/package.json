@@ -1,0 +1,14 @@
+{
+  "name": "classmemory-study-agent-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal HTTPS-capable proxy between the ClassMemory OPC app and one model provider.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/server.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
