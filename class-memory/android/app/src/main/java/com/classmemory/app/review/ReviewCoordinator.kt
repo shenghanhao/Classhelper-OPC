@@ -5,6 +5,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 interface ReviewGateway {
+    suspend fun analyzePhoto(ref: ReviewPhotoRef, bytes: ByteArray): ReviewPhotoAnalysis = error("当前代理不支持板书照片识别，请选择直连 DeepSeek / Board photo recognition requires a direct DeepSeek connection")
+    fun withPhotoAnalyses(analyses: List<ReviewPhotoAnalysis>): ReviewGateway { check(analyses.isEmpty()) { "当前代理不支持板书照片识别，请选择直连 DeepSeek / Board photo recognition requires a direct DeepSeek connection" }; return this }
     suspend fun outline(input: ReviewInput): ReviewOutline
     suspend fun unit(input: ReviewInput, outline: ReviewOutline, topicId: String): ReviewUnit
     suspend fun qa(input: ReviewInput, outline: ReviewOutline, units: List<ReviewUnit>, targetUnitId: String?, question: String, history: List<ReviewQaTurn>, noteIds: List<String> = emptyList()): ReviewQaResult = error("QA unsupported")
@@ -21,6 +23,7 @@ class ReviewSourceChangedException(val deleted: Boolean) : IllegalStateException
 class ReviewCoordinator(
     private val store: ReviewStore,
     private val gateway: ReviewGateway,
+    private val photoLoader: suspend (ReviewPhotoRef) -> ByteArray = { error("板书照片不可用 / Board photo is unavailable") },
     private val currentHash: suspend (String) -> String?,
 ) {
     private val lock = Mutex()
@@ -45,11 +48,23 @@ class ReviewCoordinator(
             checkCurrent(input)
             persist(run.copy(errors = run.errors + (stage to (error.message ?: "Analysis failed")), updatedAt = System.currentTimeMillis()))
         }
+        for (id in input.selectedVisionPhotoIds) {
+            if (id in run.photoAnalyses) continue
+            val ref = savedInput.photos.single { it.id == id }; val stage = "photo:$id"
+            onProgress(stage)
+            val analysis = try {
+                checkCurrent(input)
+                gateway.analyzePhoto(ref, photoLoader(ref)).also { checkCurrent(input); require(it.photoId == id && it.atMs == ref.atMs && it.observation.isNotBlank() && it.uncertainty.isNotBlank()) }
+            } catch (error: Exception) { failure(stage, error); continue }
+            persist(run.copy(photoAnalyses = run.photoAnalyses + (id to analysis), errors = run.errors - stage, updatedAt = System.currentTimeMillis()))
+        }
+        if (run.photoAnalyses.keys != input.selectedVisionPhotoIds.toSet()) return@withLock run
+        val reviewGateway = gateway.withPhotoAnalyses(input.selectedVisionPhotoIds.map { run.photoAnalyses.getValue(it) })
         if (run.outline == null) {
             onProgress("outline")
             val outline = try {
                 checkCurrent(input)
-                gateway.outline(savedInput).also { checkCurrent(input); ReviewContracts.validate(it, savedInput) }
+                reviewGateway.outline(savedInput).also { checkCurrent(input); ReviewContracts.validate(it, savedInput) }
             } catch (error: Exception) {
                 failure("outline", error)
                 return@withLock run
@@ -63,7 +78,7 @@ class ReviewCoordinator(
             onProgress(key)
             val unit = try {
                 checkCurrent(input)
-                gateway.unit(savedInput, outline, topic.id).also {
+                reviewGateway.unit(savedInput, outline, topic.id).also {
                     checkCurrent(input); require(it.id == topic.id) { "Provider returned another topic" }; ReviewContracts.validate(it, savedInput, outline)
                 }
             } catch (error: Exception) {
@@ -75,7 +90,7 @@ class ReviewCoordinator(
         if (run.units.size == outline.topics.size && !run.notesProcessed && savedInput.notes.isNotEmpty()) {
             onProgress("notes")
             try {
-                val result = gateway.notes(savedInput, outline, outline.topics.map { run.units.getValue(it.id) })
+                val result = reviewGateway.notes(savedInput, outline, outline.topics.map { run.units.getValue(it.id) })
                 require(result.items.map { it.noteId }.toSet() == savedInput.notes.map { it.id }.toSet() && result.items.size == savedInput.notes.size)
                 require(result.updates.keys.all { it in run.units } && result.updates.values.all { it.isNotBlank() })
                 result.items.forEach { item ->
@@ -104,7 +119,7 @@ class ReviewCoordinator(
             val units = outline.topics.map { run.units.getValue(it.id) }
             val plan = try {
                 checkCurrent(input)
-                gateway.plan(savedInput, outline, units).also { checkCurrent(input); ReviewContracts.validate(it, savedInput, units) }
+                reviewGateway.plan(savedInput, outline, units).also { checkCurrent(input); ReviewContracts.validate(it, savedInput, units) }
             } catch (error: Exception) {
                 failure("plan", error)
                 return@withLock run

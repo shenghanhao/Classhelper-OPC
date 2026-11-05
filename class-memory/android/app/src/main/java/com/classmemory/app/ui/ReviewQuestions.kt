@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
@@ -28,7 +29,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun ReviewQuestions(threads: List<ReviewQaThread>, wholeClass: Boolean = false) {
     if (threads.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     Column {
         TextButton(onClick = { expanded = !expanded }) { Text(if (wholeClass) tr("全课问答", "Whole-class questions") else tr("展开 / 收起问答", "Show / hide questions")) }
         if (expanded) threads.forEach { thread -> thread.turns.forEach { turn ->
@@ -81,7 +82,7 @@ internal fun ReviewQuestionDialog(run: ReviewRun, connection: ReviewConnection, 
             }
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(tr("确认发送", "Confirm sending")) }, text = { Text(tr("将向配置的服务发送课堂文字、课程上下文、疑问和注释、图片时间索引、已生成资料、此问题及同一对话历史；不会发送音频、图片像素或图片路径。", "The configured service receives classroom text, course context, questions and notes, photo time indexes, generated material, this question and conversation history. Audio, image pixels and paths are not sent.")) }, confirmButton = { TextButton(onClick = {
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(tr("确认发送", "Confirm sending")) }, text = { Text(tr("将向配置的服务发送课堂文字、课程上下文、疑问和注释、图片时间索引、已保存板书分析文字、已生成资料、此问题及同一对话历史；不会发送音频、图片像素或图片路径。", "The configured service receives classroom text, course context, questions and notes, photo time indexes, saved board-photo observations, generated material, this question and conversation history. Audio, image pixels and paths are not sent.")) }, confirmButton = { TextButton(onClick = {
         confirm = false; pending = true; error = null
         job = scope.launch { try { localRun = runtime.ask(localRun, connection, question, target, threadId, retryId); question = ""; retryId = null } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: tr("提问失败", "Question failed") } finally { pending = false } }
     }) { Text(tr("发送", "Send")) } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("取消", "Cancel")) } })
@@ -130,7 +131,7 @@ internal fun ReviewGraphSection(run: ReviewRun, connection: ReviewConnection, ru
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (pending) LinearProgressIndicator(Modifier.fillMaxWidth())
     TextButton(onClick = { confirm = true }, enabled = enabled && connection.isConfigured() && !pending) { Text(if (localRun.graph == null) tr("生成知识结构图", "Generate knowledge map") else tr("重新生成知识结构图", "Regenerate knowledge map")) }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(tr("确认发送", "Confirm sending")) }, text = { Text(tr("将发送课堂文字、课程上下文、疑问和注释、图片时间索引及已生成资料到配置的服务；不会发送音频、图片像素或路径。", "Classroom text, course context, questions, notes, photo time indexes and generated material will be sent to the configured service. Audio, image pixels and paths are not sent.")) }, confirmButton = { TextButton(onClick = { confirm = false; pending = true; error = null; scope.launch { try { localRun = runtime.generateGraph(localRun, connection) } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: tr("生成失败", "Generation failed") } finally { pending = false } } }) { Text(tr("发送", "Send")) } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("取消", "Cancel")) } })
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(tr("确认发送", "Confirm sending")) }, text = { Text(tr("将发送课堂文字、课程上下文、疑问和注释、图片时间索引、已保存板书分析文字及已生成资料到配置的服务；不会发送音频、图片像素或路径。", "Classroom text, course context, questions, notes, photo time indexes, saved board-photo observations and generated material will be sent to the configured service. Audio, image pixels and paths are not sent.")) }, confirmButton = { TextButton(onClick = { confirm = false; pending = true; error = null; scope.launch { try { localRun = runtime.generateGraph(localRun, connection) } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: tr("生成失败", "Generation failed") } finally { pending = false } } }) { Text(tr("发送", "Send")) } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("取消", "Cancel")) } })
 }
 
 internal data class GraphLayout(val width: Int, val height: Int, val points: Map<String, Pair<Int, Int>>)

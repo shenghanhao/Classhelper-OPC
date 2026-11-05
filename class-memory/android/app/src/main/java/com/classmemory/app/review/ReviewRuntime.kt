@@ -31,7 +31,7 @@ class ReviewRuntime private constructor(val store: ReviewStore, private val repo
                 val gateway = gatewayFactory(connection)
                 withContext(Dispatchers.Default) {
                     qaLock.withLock {
-                        ReviewCoordinator(store, gateway) { id -> requireNotNull(repo).reviewSourceHash(id, input.language) }.run(input) { phase ->
+                        ReviewCoordinator(store, gateway, photoLoader = { ref -> requireNotNull(repo).reviewPhotoBytes(ref) }) { id -> requireNotNull(repo).reviewSourceHash(id, input.language, input.selectedVisionPhotoIds.isNotEmpty()) }.run(input) { phase ->
                             mutableProgress.update { it + (input.sessionId to phase) }
                         }
                     }
@@ -65,7 +65,7 @@ class ReviewRuntime private constructor(val store: ReviewStore, private val repo
         val pendingThread = baseThread.copy(turns = pendingTurns)
         store.save(current.copy(qaThreads = current.qaThreads.filterNot { it.id == baseThread.id } + pendingThread, updatedAt = System.currentTimeMillis()))
         val result = try {
-            gatewayFactory(connection).qa(current.input, outline, outline.topics.map { current.units.getValue(it.id) }, targetUnitId, question, history, current.input.notes.map { it.id }).also { result ->
+            gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).qa(current.input, outline, outline.topics.map { current.units.getValue(it.id) }, targetUnitId, question, history, current.input.notes.map { it.id }).also { result ->
                 require(result.answerMarkdown.isNotBlank() && result.sourceIds.all { id -> current.input.sources.any { it.id == id } })
                 require(result.updates.keys.all { it in current.units && targetUnitId != null && it == targetUnitId })
                 require(!result.clarificationNeeded || result.updates.isEmpty())
@@ -85,7 +85,7 @@ class ReviewRuntime private constructor(val store: ReviewStore, private val repo
     suspend fun generateGraph(run: ReviewRun, connection: ReviewConnection): ReviewRun = qaLock.withLock {
         val current = requireNotNull(store.load(run.input.sessionId, run.input.sourceHash)); val outline = requireNotNull(current.outline)
         check(matches(current)) { "内容已变更，请先更新复习方案" }
-        val graph = gatewayFactory(connection).graph(current.input, outline, outline.topics.map { current.units.getValue(it.id) })
+        val graph = gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).graph(current.input, outline, outline.topics.map { current.units.getValue(it.id) })
         require(graph.nodes.distinct().size == graph.nodes.size && graph.nodes.toSet() == current.units.keys)
         require(graph.edges.all { it.fromUnitId in current.units && it.toUnitId in current.units && it.relation in setOf("derives", "depends_on", "parallel", "related") })
         check(matches(current)) { "内容已变更，请先更新复习方案" }

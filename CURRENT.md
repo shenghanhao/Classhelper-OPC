@@ -19,6 +19,20 @@
 | 课程上下文、模型和构建准备 | [课程上下文](docs/COURSE_CONTEXT.md)、[ASR 权重](docs/MODELS.md)、[Android 安装包](docs/OPC_APK_DELIVERY.md) |
 | 自建复盘服务 | [服务配置和 V3 请求协议](class-memory/study-agent-server/README.md) |
 
+## 板书辅助与复习导航（仅源码，未生成 APK）
+
+当前任务基线 `5ac0a17`，回退分支 `codex/checkpoint-before-review-vision`。本轮不生成安装包、不安装、不操作手机、不调用真实模型，也不发布 GitHub Release。手机仍使用此前的 `0.3.3-opc.5`。
+
+- 新整理默认只用文字；发送预览可显式选择本课全部板书。`deepseek-flash` 逐张读取图片，分开保存可辨内容和不确定性，再把观察文字送入课堂复盘。文字阶段使用用户选择的模型。图片阶段可断点重试，后续问答与图谱不重新上传图片。
+- 图片选择与内容 SHA-256 参与新版本标识；旧 V2/V3 输入摘要兼容，不迁移 Room。旧版问答仍保留。图片丢失或改变后标记旧版过期，可主动选择纯文字继续；不能静默跳过失败图片后冒充成功。
+- 右侧知识目录可以折叠、展开、滚动，点击后跳到相应知识块并收起。目录、导览和知识图复用同一位置映射。QA 保留单元下方和页面底部的展示空间及展开状态。
+- 关联板书直接在复习页内浮窗查看、缩放和切换，不进入转录页面；只有「索引到出处」跳转转录。
+- 直连与代理的提示词都要求课间和无关闲聊不成为独立知识块，仍保留全部原始转录和区间覆盖校验。仅改提示词不能证明真实模型始终正确识别课间。
+
+图片流程和入口说明见 [REVIEW_BOARD_PHOTOS.md](docs/REVIEW_BOARD_PHOTOS.md)。新的 UI 入口为 `ReviewQuickDirectory.kt`、`ReviewNavigation.kt`、`ReviewBoardPhotos.kt`；图片解析接口位于 `SessionRepository`，核心流程位于 `ReviewCoordinator` / `DirectDeepSeekGateway` / `ReviewRuntime`。
+
+验证：`:app:compileDebugKotlin` 通过；DirectDeepSeekGatewayTest、ReviewVisionTest、ReviewLegacyV2Test、ReviewTextV3Test、ReviewPipelineTest、ReviewQaGraphTest、ReviewNavigationTest、ReviewPhotoConsentStateTest 共 **38 项通过**。首次测试编译因 4 处新测试夹具缺少 `updatedAt` 停止，仅补齐夹具后重试一次成功，生产代码未因此修改。`node --check class-memory/study-agent-server/review-v3.mjs` 通过。未执行 assemble、安装、真机或真实模型调用，图片理解质量和设备界面表现仍待后续验收。
+
 ## v0.3.3 手机直连 DeepSeek（本地安装）
 
 用户选择自行填写 API Key，替代已经停止的电脑临时代理。设置 → 复习服务连接 → 手机直连 DeepSeek，输入个人密钥并保存；默认 deepseek-flash，也支持 deepseek-v4-pro。密钥通过 Android Keystore 的 AES-GCM 密钥加密后存储，不进入课堂记录、导出、错误提示或源码；设置页禁止截图。清除密钥不删除课堂资料。旧 localhost 配置默认切换到直连，旧远程代理保留，代理 token 不会成为供应商 API Key。

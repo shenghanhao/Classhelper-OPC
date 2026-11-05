@@ -108,7 +108,6 @@ class MainActivity : ComponentActivity() {
                     sessionId = current.id,
                     onBack = { page = Screen.Detail(current.id) },
                     onSource = { source -> page = Screen.Detail(source.sessionId, "transcript:${source.segmentId}", returnReviewId = current.id) },
-                    onPhoto = { photo -> page = Screen.Detail(photo.sessionId, "photo:${photo.id}", photo.id, current.id) },
                     onSettings = { page = Screen.ReviewSettings(current.id) },
                 ) }
                 is Screen.ReviewSettings -> ReviewConnectionSettings(onBack = {

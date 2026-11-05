@@ -157,6 +157,8 @@ internal fun BoardPhotoViewer(
     onDeletePending: (String?) -> Unit,
     onDeleteCompleted: (BoardPhotoDeletionResult) -> Unit,
     onClose: () -> Unit,
+    allowDelete: Boolean = true,
+    photoNavigation: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val result by produceState(false to null as Bitmap?, photo.id, photo.relativePath) {
@@ -186,9 +188,10 @@ internal fun BoardPhotoViewer(
             Column(Modifier.fillMaxSize().padding(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(formatBoardPhotoTime(photo.capturedAtMs), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    TextButton(onClick = { if (!deleting && !deleteInFlight) confirmDelete = true }, enabled = !busy) { Text(tr("删除", "Delete")) }
+                    if (allowDelete) TextButton(onClick = { if (!deleting && !deleteInFlight) confirmDelete = true }, enabled = !busy) { Text(tr("删除", "Delete")) }
                     TextButton(onClick = { if (!deleting && !deleteInFlight) onClose() }, enabled = !busy) { Text(tr("关闭", "Close")) }
                 }
+                photoNavigation?.invoke()
                 Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
                     .onSizeChanged { viewWidth = it.width.toFloat().coerceAtLeast(1f); viewHeight = it.height.toFloat().coerceAtLeast(1f) }
                     .pointerInput(photo.id, viewWidth, viewHeight, bitmap) {
@@ -205,7 +208,7 @@ internal fun BoardPhotoViewer(
             }
         }
     }
-    if (confirmDelete) {
+    if (allowDelete && confirmDelete) {
         AlertDialog(
             onDismissRequest = { if (!deleting && !deleteInFlight) confirmDelete = false },
             properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),

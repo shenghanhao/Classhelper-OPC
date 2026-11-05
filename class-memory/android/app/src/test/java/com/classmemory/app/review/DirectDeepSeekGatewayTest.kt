@@ -149,4 +149,38 @@ class DirectDeepSeekGatewayTest {
             job.cancelAndJoin(); assertTrue(job.isCancelled)
         } finally { release.countDown() }
     }
+
+    @Test fun visionUsesFlashAndPassesOnlyAnalysisToLaterTextStages() = runBlocking {
+        val original = input(); val p = ReviewPhotoRef("photo", "class", 5, "a".repeat(64))
+        val selected = original.copy(photos = listOf(p), selectedVisionPhotoIds = listOf(p.id)).let { it.copy(sourceHash = it.contentHash()) }
+        var calls = 0
+        val gateway = DirectDeepSeekGateway("test-key", model = "deepseek-reasoner", client = client { request ->
+            val user = request.getJSONArray("messages").getJSONObject(1)
+            val stage = calls++
+            if (stage == 0) {
+                assertEquals("deepseek-flash", request.getString("model"))
+                val parts = user.getJSONArray("content"); assertEquals("image_url", parts.getJSONObject(1).getString("type"))
+                assertTrue(parts.getJSONObject(1).getJSONObject("image_url").getString("url").startsWith("data:image/jpeg;base64,"))
+                200 to response(JSONObject("""{"observation":"x=1","uncertainty":"数字模糊"}"""))
+            } else {
+                assertEquals("deepseek-reasoner", request.getString("model"))
+                val data = JSONObject(user.getString("content")); assertEquals("x=1", data.getJSONArray("photoAnalyses").getJSONObject(0).getString("observation"))
+                assertFalse(data.toString().contains("data:image"))
+                val output = when (stage) {
+                    1 -> JSONObject("""{"overview":"导览","sections":[{"id":"section","title":"片段","startIndex":0,"endIndex":1}],"topics":[{"id":"unit","title":"主题","sectionIds":["section"]}]}""")
+                    2 -> ReviewJson.unit(unit)
+                    3 -> JSONObject("""{"items":[{"noteId":"n1","disposition":"answered","unitId":"unit","answerMarkdown":"答","sourceIds":["s1"],"relatedQuestionNoteId":null}],"updates":[{"unitId":"unit","markdown":"融合"}]}""")
+                    4 -> JSONObject("""{"title":"复习","introduction":"介绍","suggestedDate":"2026-11-05","steps":[{"title":"步骤","task":"回顾","completionCriteria":"说明","unitIds":["unit"]}]}""")
+                    5 -> JSONObject("""{"answerMarkdown":"答","sourceIds":["s1"],"updates":[],"clarificationNeeded":false}""")
+                    else -> JSONObject("""{"nodes":[{"unitId":"unit"}],"edges":[]}""")
+                }
+                200 to response(output)
+            }
+        })
+        val result = gateway.analyzePhoto(p, byteArrayOf(1, 2, 3)); assertEquals("数字模糊", result.uncertainty)
+        val textual = gateway.withPhotoAnalyses(listOf(result))
+        assertEquals(outline, textual.outline(selected)); textual.unit(selected, outline, "unit"); textual.notes(selected, outline, listOf(unit))
+        textual.plan(selected, outline, listOf(unit)); textual.qa(selected, outline, listOf(unit), null, "问题", emptyList())
+        textual.graph(selected, outline, listOf(unit)); assertEquals(7, calls)
+    }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,7 +29,6 @@ fun ReviewScreen(
     sessionId: String,
     onBack: () -> Unit,
     onSource: (ReviewSource) -> Unit,
-    onPhoto: (ReviewPhotoRef) -> Unit,
     onSettings: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -41,6 +41,7 @@ fun ReviewScreen(
     var run by remember(sessionId) { mutableStateOf<ReviewRun?>(null) }
     var prepared by remember(sessionId) { mutableStateOf<ReviewInput?>(null) }
     var consent by remember(sessionId) { mutableStateOf<ReviewInput?>(null) }
+    var photoConsent by remember(sessionId) { mutableStateOf(ReviewPhotoConsentState()) }
     var error by remember(sessionId) { mutableStateOf<String?>(null) }
     var loaded by remember(sessionId) { mutableStateOf(false) }
     var current by remember(sessionId) { mutableStateOf<Boolean?>(null) }
@@ -59,16 +60,57 @@ fun ReviewScreen(
             val latest = runtime.store.latest(sessionId)
             run = latest
             history = runtime.store.listVersions(sessionId).filter { it.input.sourceHash != latest?.input?.sourceHash }
-            val input = repo.prepareReview(sessionId, language)
-            val matches = latest?.let { runtime.isCurrent(it, input) }
+            val input = repo.prepareReview(sessionId, language, includeBoardPhotos = false)
             prepared = input
-            current = matches
             error = null
+            current = latest?.let {
+                try { runtime.isCurrent(it, input) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) {
+                    error = failure.message ?: tr("原板书已不可用，可重新进行文字分析。", "Previous board photos are unavailable. You can analyze the text again.")
+                    false
+                }
+            }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message ?: tr("无法读取课堂", "Could not load classroom") }
         finally { loaded = true }
     }
     val shown = run
+    val orderedUnits = shown?.let(::orderedReviewUnits).orEmpty()
+    fun jumpToUnit(id: String) {
+        scope.launch {
+            reviewUnitIndex(run, id)?.let { listState.animateScrollToItem(it) }
+        }
+    }
+    fun prepareConsent(include: Boolean, retry: ReviewRun? = null) {
+        photoConsent = photoConsent.request(include)
+        scope.launch {
+            try {
+                check(!include || connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK) {
+                    tr("板书分析需要手机直连 DeepSeek，也可仅用文字继续。", "Photo analysis requires a direct DeepSeek connection. You can continue with text only.")
+                }
+                val next = if (include && retry != null) {
+                    check(runtime.isCurrent(retry)) {
+                        tr("原板书或课堂资料已变化，请重新选图或仅用文字继续。", "The original photos or class material changed. Select photos again or continue with text only.")
+                    }
+                    retry.input
+                } else repo.prepareReview(sessionId, language, includeBoardPhotos = include)
+                check(!include || next.selectedVisionPhotoIds.isNotEmpty()) {
+                    tr("没有可用板书，可仅用文字继续。", "No board photos are available. You can continue with text only.")
+                }
+                consent = next
+                photoConsent = photoConsent.finish()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                photoConsent = photoConsent.finish(failure.message ?: tr("准备失败", "Could not prepare"))
+            }
+        }
+    }
+    fun openConsent(resume: Boolean = false) {
+        consent = shown?.input ?: prepared
+        val include = resume && reviewRetryIncludesPhotos(shown)
+        prepareConsent(include, retry = shown.takeIf { include })
+    }
     Scaffold(containerColor = ClassMemoryColors.current.background, floatingActionButton = {
         if (shown != null) FloatingActionButton(onClick = { questionPanel = true }) { Text("?", style = MaterialTheme.typography.titleLarge) }
     }, topBar = {
@@ -85,8 +127,9 @@ fun ReviewScreen(
             }
             return@Scaffold
         }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item(key = "header") {
                 Text(shown?.input?.title ?: prepared?.title ?: tr("课堂复习资料", "Classroom review material"), style = MaterialTheme.typography.headlineSmall)
                 if (history.isNotEmpty()) TextButton(onClick = { showHistory = true }) { Text(tr("查看旧版复习资料与问答", "View earlier review material and questions")) }
                 if (stale) Text(tr("原文或课程上下文已改变，以下资料已过期。重新分析会保留旧版记录。", "Source or course context changed. Material below is outdated; analyzing again keeps the previous version."), color = MaterialTheme.colorScheme.error)
@@ -94,43 +137,38 @@ fun ReviewScreen(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 runtimeErrors[sessionId]?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
-            item {
+            item(key = "actions") {
                 if (running) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(progressLabel(progress[sessionId].orEmpty()))
                     TextButton(onClick = { runtime.cancel(sessionId) }) { Text(tr("取消分析", "Cancel analysis")) }
                 } else {
                     if (!connection.isConfigured()) Text(tr("尚未配置复习服务。可以继续阅读已保存资料，或前往服务设置。", "Review service is not configured. Saved material remains readable; configure the service to analyze."))
-                    if (shown?.plan == null || stale || shown.input.analysisVersion < 3 || (!shown.notesProcessed && shown.input.notes.isNotEmpty())) Button(enabled = prepared != null && connection.isConfigured(), modifier = Modifier.fillMaxWidth(), onClick = {
-                        scope.launch {
-                            try { consent = repo.prepareReview(sessionId, language) }
-                            catch (cancelled: CancellationException) { throw cancelled }
-                            catch (failure: Exception) { error = failure.message ?: tr("准备失败", "Could not prepare") }
+                    if (shown?.plan == null || stale || shown.input.analysisVersion < 3 || shown.errors.isNotEmpty() || (!shown.notesProcessed && shown.input.notes.isNotEmpty())) Button(enabled = prepared != null && connection.isConfigured(), modifier = Modifier.fillMaxWidth(), onClick = { openConsent(resume = true) }) { Text(when { stale -> tr("预览并分析最新内容", "Preview and analyze latest content"); shown != null && shown.input.analysisVersion < 3 -> tr("按新方式重新整理", "Reorganize with the new approach"); (shown?.errors?.isNotEmpty() == true || (shown != null && !shown.notesProcessed && shown.input.notes.isNotEmpty())) -> tr("预览并重试失败部分", "Preview and retry failed stages"); else -> tr("生成完整复习题案", "Create review scheme") }) }
+                    if (shown?.plan != null && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK && prepared?.photos?.any { it.sessionId == sessionId } == true) {
+                        OutlinedButton(onClick = { openConsent() }, enabled = connection.isConfigured(), modifier = Modifier.fillMaxWidth()) {
+                            Text(tr("结合板书重新整理", "Reorganize with board photos"))
                         }
-                    }) { Text(when { stale -> tr("预览并分析最新内容", "Preview and analyze latest content"); shown != null && shown.input.analysisVersion < 3 -> tr("按新方式重新整理", "Reorganize with the new approach"); (shown?.errors?.isNotEmpty() == true || (shown != null && !shown.notesProcessed && shown.input.notes.isNotEmpty())) -> tr("预览并重试失败部分", "Preview and retry failed stages"); else -> tr("生成完整复习题案", "Create review scheme") }) }
+                    }
                 }
             }
             if (shown != null) {
-                if (shown.errors.isNotEmpty()) item {
+                if (shown.errors.isNotEmpty()) item(key = "errors") {
                     ReviewBlock(tr("尚未完成", "Incomplete")) {
                         shown.errors.forEach { (stage, message) -> Text("${progressLabel(stage)}: $message", color = MaterialTheme.colorScheme.error) }
                         Text(tr("已成功的部分已保存，重试仅处理失败或缺失部分。", "Successful stages are saved. Retry processes only failed or missing stages."))
                     }
                 }
-                val orderedUnits = shown.outline?.topics?.mapNotNull { shown.units[it.id] }
-                    ?: shown.units.values.toList()
-                val unitStart = 2 + (if (shown.errors.isNotEmpty()) 1 else 0) + (if (shown.outline != null) 1 else 0) + (if (shown.plan != null) 1 else 0)
                 shown.outline?.let { outline ->
-                    item {
+                    item(key = "outline") {
                         ReviewBlock(tr("全课导览", "Whole-class guide")) {
                             Text(outline.overview)
                             ReviewGraphSection(shown, connection, runtime, current == true, onNode = { id ->
-                                val index = orderedUnits.indexOfFirst { it.id == id }
-                                if (index >= 0) scope.launch { listState.animateScrollToItem(unitStart + index) }
+                                jumpToUnit(id)
                             })
-                            orderedUnits.forEachIndexed { index, unit ->
+                            orderedUnits.forEach { unit ->
                                 val first = unit.sourceIds.mapNotNull { id -> shown.input.sources.find { it.id == id && it.isCurrent } }.minByOrNull { it.startMs }
-                                TextButton(onClick = { scope.launch { listState.animateScrollToItem(unitStart + index) } }) {
+                                TextButton(onClick = { jumpToUnit(unit.id) }) {
                                     Text(listOfNotNull(first?.let { reviewTime(it.startMs) }, unit.title).joinToString(" · "))
                                 }
                             }
@@ -138,7 +176,7 @@ fun ReviewScreen(
                     }
                 }
                 shown.plan?.let { plan ->
-                    item {
+                    item(key = "plan") {
                         ReviewBlock(plan.title) {
                             Text(plan.introduction)
                             Text(tr("建议复习日期：${plan.suggestedDate}", "Suggested review date: ${plan.suggestedDate}"))
@@ -174,7 +212,7 @@ fun ReviewScreen(
                             ReviewContent(listOfNotNull(unit.explanation, unit.conditions.takeIf { it.isNotBlank() }, unit.classroomFocus, unit.example?.takeIf { it.isNotBlank() }).joinToString("\n\n"))
                         }
                         shown.unitVersions[unit.id]?.takeIf { it.isNotEmpty() }?.let { versions ->
-                            var showVersions by remember(unit.id) { mutableStateOf(false) }
+                            var showVersions by rememberSaveable(unit.id) { mutableStateOf(false) }
                             TextButton(onClick = { showVersions = !showVersions }) { Text(tr("查看 / 收起旧版讲解", "Show / hide earlier explanations")) }
                             if (showVersions) versions.forEachIndexed { index, markdown ->
                                 Text(tr("旧版 ${index + 1}", "Earlier version ${index + 1}"), style = MaterialTheme.typography.titleSmall)
@@ -190,8 +228,15 @@ fun ReviewScreen(
 
                     }
                 }
-                item { ReviewQuestions(shown.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
+                item(key = "whole-class-questions") { ReviewQuestions(shown.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
             }
+        }
+        ReviewQuickDirectory(
+            units = orderedUnits,
+            maxHeight = (maxHeight * 0.55f).coerceAtMost(360.dp),
+            modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = 88.dp),
+            onSelect = ::jumpToUnit,
+        )
         }
     }
     if (questionPanel && shown != null) ReviewQuestionDialog(shown, connection, runtime, current == true, onClose = { questionPanel = false })
@@ -216,19 +261,15 @@ fun ReviewScreen(
             }
         }
     }
-    if (boardPhotos.isNotEmpty()) {
-        AlertDialog(onDismissRequest = { boardPhotos = emptyList() }, title = { Text(tr("关联板书", "Related board photos")) }, text = {
-            Column { boardPhotos.forEachIndexed { index, photo ->
-                TextButton(onClick = { boardPhotos = emptyList(); onPhoto(photo) }) { Text(tr("板书 ${index + 1}", "Board ${index + 1}")) }
-            } }
-        }, confirmButton = { TextButton(onClick = { boardPhotos = emptyList() }) { Text(tr("关闭", "Close")) } })
-    }
     consent?.let { input ->
-        ReviewConsent(input, connection.mode, onDismiss = { consent = null }, onConfirm = {
+        ReviewConsent(input, connection.mode, photoConsent, onIncludePhotos = { include ->
+            prepareConsent(include)
+        }, onPreviewPhotos = { boardPhotos = it }, onDismiss = { consent = null }, onConfirm = {
             runtime.start(input, ReviewConnectionPreferences.load(context))
             consent = null
         })
     }
+    if (boardPhotos.isNotEmpty()) ReviewBoardPhotos(boardPhotos, repo, onClose = { boardPhotos = emptyList() })
 }
 
 @Composable
@@ -255,21 +296,50 @@ private fun reviewTime(ms: Long): String {
 private fun progressLabel(stage: String): String = when {
     stage == "outline" -> tr("正在通读课堂并划分区间", "Reading the class and building sections")
     stage.startsWith("unit:") -> tr("正在整理知识点 ${stage.removePrefix("unit:")}", "Preparing topic ${stage.removePrefix("unit:")}")
+    stage.startsWith("photo:") -> tr("正在分析板书", "Analyzing board photos")
     stage == "plan" -> tr("正在合成完整复习题案", "Combining the review scheme")
     else -> stage
 }
 
 @Composable
-private fun ReviewConsent(input: ReviewInput, mode: ReviewConnectionMode, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+private fun ReviewConsent(
+    input: ReviewInput,
+    mode: ReviewConnectionMode,
+    selection: ReviewPhotoConsentState,
+    onIncludePhotos: (Boolean) -> Unit,
+    onPreviewPhotos: (List<ReviewPhotoRef>) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val preparing = selection.preparing
+    val error = selection.error
+    val selectedPhotos = input.photos.filter { it.id in input.selectedVisionPhotoIds }
+    val currentPhotoCount = input.photos.count { it.sessionId == input.sessionId }
+    val requestedPhotoCount = if (selectedPhotos.isEmpty()) currentPhotoCount else selectedPhotos.size
+    Dialog(onDismissRequest = { if (!preparing) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding()) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Text(tr("确认发送的课堂资料", "Confirm classroom material to send"), style = MaterialTheme.typography.titleLarge)
                 Text(if (mode == ReviewConnectionMode.DIRECT_DEEPSEEK) {
-                    tr("以下课堂文字、疑问与注释、课程上下文以及图片时间索引将由手机直接发送给 DeepSeek。音频和板书图片保留在本地。", "This phone will send the classroom text, questions, notes, course context and photo time indexes below directly to DeepSeek. Audio and board photos stay on the device.")
+                    if (!selection.includeRequested) {
+                        tr("以下课堂文字、疑问与注释、课程上下文及图片时间索引将直接发送给 DeepSeek。本次保持纯文字分析。", "The classroom text, questions, notes, course context and photo time indexes will go directly to DeepSeek. This request uses text analysis.")
+                    } else {
+                        tr("先将选中的 ${requestedPhotoCount} 张本课板书上传给 DeepSeek 单独分析，再将图片分析文字与课堂资料合并整理。音频保留在本地。", "First upload the ${requestedPhotoCount} selected board photos to DeepSeek for image analysis, then combine the resulting observations with classroom material. Audio stays on the device.")
+                    }
                 } else {
                     tr("以下课堂文字、疑问与注释、课程上下文以及图片时间索引将发送到你配置的代理及其模型供应商。音频和板书图片保留在本地。", "The classroom text, questions, notes, course context and photo time indexes below will be sent to your configured proxy and its model provider. Audio and board photos stay on the device.")
                 })
+                if (mode == ReviewConnectionMode.DIRECT_DEEPSEEK) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = selection.includeRequested, enabled = !preparing && (currentPhotoCount > 0 || selection.includeRequested), onCheckedChange = onIncludePhotos)
+                    Text(tr("结合本课板书分析（上传 ${requestedPhotoCount} 张）", "Include this class's board photos (upload ${requestedPhotoCount})"), Modifier.weight(1f))
+                }
+                if (preparing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                    if (selection.includeRequested) TextButton(enabled = !preparing, onClick = { onIncludePhotos(false) }) {
+                        Text(tr("仅用文字继续", "Continue with text only"))
+                    }
+                }
                 LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                     item { Text("${input.title.orEmpty()}\n${tr("生成日期", "Generation date")}: ${input.today}\n${tr("语言", "Language")}: ${input.language}\n${tr("课堂标识", "Class ID")}: ${input.sessionId}\n${tr("内容指纹", "Content hash")}: ${input.sourceHash}") }
                     input.course?.let { c -> item {
@@ -285,11 +355,16 @@ private fun ReviewConsent(input: ReviewInput, mode: ReviewConnectionMode, onDism
                         }
                     }
                     items(input.notes, key = { "note:${it.id}" }) { n -> ReviewBlock("${n.kind} ${reviewTime(n.atMs)} · ${n.id}") { Text(n.text) } }
-                    items(input.photos, key = { "photo:${it.id}" }) { p -> Text(tr("图片索引", "Photo index") + ": ${p.id} · ${p.sessionId} · ${reviewTime(p.atMs)}") }
+                    items(input.photos, key = { "photo:${it.id}" }) { p ->
+                        val label = if (p.id in input.selectedVisionPhotoIds) tr("将上传板书", "Board photo to upload") else tr("仅图片索引", "Photo index only")
+                        TextButton(onClick = { onPreviewPhotos(listOf(p)) }) {
+                            Text("$label · ${reviewTime(p.atMs)} · " + tr("本地查看", "View locally"))
+                        }
+                    }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(tr("取消", "Cancel")) }
-                    Button(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text(tr("同意并开始", "Agree and start")) }
+                    OutlinedButton(onClick = onDismiss, enabled = !preparing, modifier = Modifier.weight(1f)) { Text(tr("取消", "Cancel")) }
+                    Button(onClick = onConfirm, enabled = selection.canConfirm(input), modifier = Modifier.weight(1f)) { Text(tr("同意并开始", "Agree and start")) }
                 }
             }
         }
