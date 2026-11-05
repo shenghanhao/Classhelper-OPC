@@ -1,6 +1,6 @@
 # 板书辅助复盘 / Board-assisted review
 
-This source change is not included in the currently installed or published APK. See CURRENT.md for validation and delivery status.
+Included in the locally built OPC `0.4.0-opc.6` preview, alongside the topic directory and after-class practice. It has not been installed on the phone or published to GitHub in this delivery. See CURRENT.md for validation and delivery status.
 
 ## 使用方式
 

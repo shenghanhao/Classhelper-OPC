@@ -22,6 +22,7 @@ internal fun ReviewQuickDirectory(
     maxHeight: Dp,
     modifier: Modifier = Modifier,
     onSelect: (String) -> Unit,
+    onExercises: (() -> Unit)? = null,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     if (units.isEmpty()) return
@@ -38,7 +39,12 @@ internal fun ReviewQuickDirectory(
                 TextButton(onClick = { expanded = false }) { Text(tr("收起", "Hide")) }
             }
             LazyColumn(Modifier.weight(1f, fill = false)) {
-                items(units, key = { it.id }) { unit ->
+                if (onExercises != null) item(key = "exercises") {
+                    TextButton(onClick = { expanded = false; onExercises() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(tr("课后练习", "After-class practice"), Modifier.fillMaxWidth())
+                    }
+                }
+                items(units, key = { "unit:${it.id}" }) { unit ->
                     TextButton(
                         onClick = { expanded = false; onSelect(unit.id) },
                         modifier = Modifier.fillMaxWidth(),

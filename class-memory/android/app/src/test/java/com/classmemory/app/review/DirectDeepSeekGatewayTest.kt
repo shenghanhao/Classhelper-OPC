@@ -183,4 +183,23 @@ class DirectDeepSeekGatewayTest {
         textual.plan(selected, outline, listOf(unit)); textual.qa(selected, outline, listOf(unit), null, "问题", emptyList())
         textual.graph(selected, outline, listOf(unit)); assertEquals(7, calls)
     }
+
+    @Test fun exerciseCallsSendCompleteContextAndRejectInvalidProviderData() = runBlocking {
+        val i = input(); var calls = 0
+        val service = DirectDeepSeekGateway("test-key", client = client { request ->
+            val payload = JSONObject(request.getJSONArray("messages").getJSONObject(1).getString("content"))
+            assertEquals(2, payload.getJSONObject("input").getJSONArray("sources").length())
+            assertEquals("正文", payload.getJSONArray("units").getJSONObject(0).getString("markdown"))
+            val body = when (calls++) {
+                0 -> JSONObject("""{"exercises":[{"unitId":"unit","kind":"SHORT","question":"解释","options":[]}]}""")
+                1 -> { assertEquals("原样回答", payload.getString("studentAnswer")); JSONObject("""{"verdict":"partial","feedback":"反馈","reasoning":"思路","sourceIds":["s1"],"followUp":{"unitId":"unit","kind":"SHORT","question":"再解释","options":[]}}""") }
+                else -> JSONObject("""{"verdict":"correct","feedback":"反馈","reasoning":"思路","sourceIds":["unknown"],"followUp":null}""")
+            }
+            200 to response(body)
+        })
+        val exercise = service.generateExercises(i, outline, listOf(unit)).single().let { ReviewExercise("local", it.unitId, it.kind, it.question, it.options) }
+        assertNotNull(service.gradeExercise(i, outline, listOf(unit), exercise, "原样回答", true).followUp)
+        try { service.gradeExercise(i, outline, listOf(unit), exercise, "原样回答", true); fail("Expected invalid source") }
+        catch (e: ReviewGatewayException) { assertEquals("INVALID_RESULT", e.code) }
+    }
 }

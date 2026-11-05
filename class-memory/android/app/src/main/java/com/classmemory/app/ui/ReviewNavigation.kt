@@ -15,8 +15,15 @@ internal fun reviewListKeys(run: ReviewRun?): List<String> = buildList {
         if (run.plan != null) add("plan")
         orderedReviewUnits(run).forEach { add("unit:${it.id}") }
         add("whole-class-questions")
+        add("exercises")
+        run.exercises.forEach { add("exercise:${it.id}") }
     }
 }
 
 internal fun reviewUnitIndex(run: ReviewRun?, unitId: String): Int? =
     reviewListKeys(run).indexOf("unit:$unitId").takeIf { it >= 0 }
+
+internal fun reviewExerciseIndex(run: ReviewRun?, exerciseId: String? = null): Int? {
+    val key = exerciseId?.let { "exercise:$it" } ?: "exercises"
+    return reviewListKeys(run).indexOf(key).takeIf { it >= 0 }
+}

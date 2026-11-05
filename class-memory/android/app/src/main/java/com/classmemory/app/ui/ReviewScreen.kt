@@ -20,6 +20,8 @@ import com.classmemory.app.repository.SessionRepository
 import com.classmemory.app.review.*
 import com.classmemory.app.ui.theme.ClassMemoryColors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,6 +53,10 @@ fun ReviewScreen(
     var boardPhotos by remember { mutableStateOf<List<ReviewPhotoRef>>(emptyList()) }
     var questionPanel by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val snackbar = remember { SnackbarHostState() }
+    var exerciseBusy by remember(sessionId) { mutableStateOf(false) }
+    var exerciseJob by remember(sessionId) { mutableStateOf<Job?>(null) }
+    var exerciseError by remember(sessionId) { mutableStateOf<String?>(null) }
     val connection = ReviewConnectionPreferences.load(context)
     val running = progress.containsKey(sessionId)
     val stale = current == false
@@ -80,6 +86,43 @@ fun ReviewScreen(
     fun jumpToUnit(id: String) {
         scope.launch {
             reviewUnitIndex(run, id)?.let { listState.animateScrollToItem(it) }
+        }
+    }
+    fun jumpToExercise(id: String? = null) {
+        scope.launch { reviewExerciseIndex(run, id)?.let { listState.animateScrollToItem(it) } }
+    }
+    fun requestExercise(exercise: ReviewExercise? = null, answer: String = "", retryId: String? = null) {
+        val selectedRun = run ?: return
+        if (exerciseBusy || current != true || running || !connection.isConfigured() || connection.mode != ReviewConnectionMode.DIRECT_DEEPSEEK) return
+        exerciseBusy = true
+        exerciseError = null
+        exerciseJob = scope.launch {
+            try {
+                if (exercise == null) runtime.generateExercises(selectedRun, connection)
+                else {
+                    if (retryId == null) runtime.store.saveExerciseDraft(sessionId, selectedRun.input.sourceHash, exercise.id, answer)
+                    runtime.submitExercise(selectedRun, connection, exercise.id, answer, retryAttemptId = retryId)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { exerciseError = failure.message ?: tr("练习请求失败，请重试。", "The practice request failed. Try again.") }
+            finally { exerciseBusy = false; exerciseJob = null }
+        }
+    }
+    LaunchedEffect(sessionId, shown?.input?.sourceHash) {
+        snapshotFlow { run?.exerciseNotices.orEmpty().filterNot { it.consumed } }.collect { notices ->
+            for (notice in notices) {
+                val activeRun = run ?: break
+                try {
+                    if (!runtime.ackExerciseNotice(activeRun, notice.id)) continue
+                    val result = snackbar.showSnackbar(
+                        message = tr("DeepSeek 已追加一道针对练习，已放到末尾。", "DeepSeek added a follow-up question at the end."),
+                        actionLabel = tr("查看", "View"),
+                        duration = SnackbarDuration.Long,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) jumpToExercise(notice.exerciseId)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { exerciseError = tr("无法保存练习提醒状态，请重新打开页面。", "Could not save practice notification state. Reopen this page.") }
+            }
         }
     }
     fun prepareConsent(include: Boolean, retry: ReviewRun? = null) {
@@ -113,7 +156,7 @@ fun ReviewScreen(
     }
     Scaffold(containerColor = ClassMemoryColors.current.background, floatingActionButton = {
         if (shown != null) FloatingActionButton(onClick = { questionPanel = true }) { Text("?", style = MaterialTheme.typography.titleLarge) }
-    }, topBar = {
+    }, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text(tr("返回", "Back")) }
             Text(tr("课堂复习", "Classroom review"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -229,6 +272,23 @@ fun ReviewScreen(
                     }
                 }
                 item(key = "whole-class-questions") { ReviewQuestions(shown.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
+                item(key = "exercises") {
+                    ReviewExerciseHeader(
+                        shown, connection, current == true && !running, exerciseBusy, exerciseError,
+                        onGenerate = { requestExercise() },
+                        onCancel = { exerciseJob?.cancel() },
+                    )
+                }
+                items(shown.exercises, key = { "exercise:${it.id}" }) { exercise ->
+                    ReviewExerciseCard(
+                        shown, exercise, shown.exercises.indexOfFirst { it.id == exercise.id } + 1,
+                        runtime, scope,
+                        enabled = current == true && !running && connection.isConfigured() && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK,
+                        busy = exerciseBusy,
+                        onSubmit = ::requestExercise,
+                        onCancel = { exerciseJob?.cancel() },
+                    )
+                }
             }
         }
         ReviewQuickDirectory(
@@ -236,6 +296,7 @@ fun ReviewScreen(
             maxHeight = (maxHeight * 0.55f).coerceAtMost(360.dp),
             modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = 88.dp),
             onSelect = ::jumpToUnit,
+            onExercises = if (shown == null) null else ({ jumpToExercise() }),
         )
         }
     }
@@ -255,6 +316,10 @@ fun ReviewScreen(
                             }
                         }
                         item { ReviewQuestions(old.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
+                        if (old.exercises.isNotEmpty()) item { Text(tr("课后练习", "After-class practice"), style = MaterialTheme.typography.titleMedium) }
+                        items(old.exercises, key = { "old-exercise:${old.input.sourceHash}:${it.id}" }) { exercise ->
+                            ReviewExerciseHistory(exercise, old.exercises.indexOfFirst { it.id == exercise.id } + 1)
+                        }
                     }
                 }
                 TextButton(onClick = { showHistory = false }) { Text(tr("关闭", "Close")) }

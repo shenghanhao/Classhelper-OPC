@@ -92,6 +92,72 @@ class ReviewRuntime private constructor(val store: ReviewStore, private val repo
         store.save(current.copy(graph = graph, updatedAt = System.currentTimeMillis())); requireNotNull(store.load(current.input.sessionId, current.input.sourceHash))
     }
 
+    suspend fun generateExercises(run: ReviewRun, connection: ReviewConnection): ReviewRun = qaLock.withLock {
+        val current = requireNotNull(store.load(run.input.sessionId, run.input.sourceHash))
+        check(matches(current)) { "内容已变更，请先更新复习方案" }
+        if (current.exercises.isNotEmpty()) return@withLock current
+        val outline = requireNotNull(current.outline); check(current.plan != null)
+        val drafts = gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).generateExercises(current.input, outline, outline.topics.map { current.units.getValue(it.id) })
+        require(drafts.size in 1..5)
+        val exercises = drafts.map { ReviewExercise(UUID.randomUUID().toString(), it.unitId, it.kind, it.question, it.options) }
+        check(matches(current)) { "内容已变更，请先更新复习方案" }
+        val next = current.copy(exercises = exercises, updatedAt = System.currentTimeMillis())
+        ReviewExerciseCodec.validate(next); store.save(next); requireNotNull(store.load(current.input.sessionId, current.input.sourceHash))
+    }
+
+    suspend fun submitExercise(run: ReviewRun, connection: ReviewConnection, exerciseId: String, answer: String, retryAttemptId: String? = null): ReviewRun = qaLock.withLock {
+        require(answer.isNotBlank())
+        val current = requireNotNull(store.load(run.input.sessionId, run.input.sourceHash))
+        check(matches(current)) { "内容已变更，请先更新复习方案" }
+        val exercise = current.exercises.single { it.id == exerciseId }
+        val retry = retryAttemptId?.let { id -> exercise.attempts.single { it.id == id && it.answer == answer } }
+        if (retry?.status == "graded") return@withLock current
+        if (retry == null) {
+            val same = exercise.attempts.lastOrNull { it.answer == answer }
+            if (same?.status == "graded") return@withLock current
+            check(same == null) { "请重试已保存的作答 / Retry the saved answer" }
+        }
+        val pending = ReviewExerciseAttempt(retry?.id ?: UUID.randomUUID().toString(), answer, "pending")
+        val pendingExercise = exercise.copy(attempts = if (retry == null) exercise.attempts + pending else exercise.attempts.map { if (it.id == retry.id) pending else it })
+        store.save(current.copy(exercises = current.exercises.map { if (it.id == exerciseId) pendingExercise else it }, updatedAt = System.currentTimeMillis()))
+        val outline = requireNotNull(current.outline)
+        val allowFollowUp = exercise.parentId == null && current.exercises.none { it.parentId == exercise.id }
+        val grade = try {
+            gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).gradeExercise(current.input, outline, outline.topics.map { current.units.getValue(it.id) }, exercise, answer, allowFollowUp).also { result ->
+                require(result.verdict in setOf("correct", "partial", "incorrect", "unclear") && result.feedback.isNotBlank() && result.reasoning.isNotBlank())
+                require(result.sourceIds.isNotEmpty() && result.sourceIds.distinct().size == result.sourceIds.size && result.sourceIds.all { id -> current.input.sources.any { it.isCurrent && it.id == id } })
+                require(result.followUp == null || (allowFollowUp && result.verdict != "correct" && result.followUp.unitId == exercise.unitId))
+                result.followUp?.let { draft -> ReviewExerciseCodec.validate(current.copy(exercises = current.exercises + ReviewExercise("validation-candidate", draft.unitId, draft.kind, draft.question, draft.options, exercise.id))) }
+                check(matches(current)) { "内容已变更，请先更新复习方案" }
+            }
+        } catch (e: Exception) {
+            withContext(NonCancellable) {
+                val saved = store.load(current.input.sessionId, current.input.sourceHash)
+                if (saved != null) store.save(saved.copy(exercises = saved.exercises.map { x -> if (x.id == exerciseId) x.copy(attempts = x.attempts.map { if (it.id == pending.id) it.copy(status = "failed") else it }) else x }))
+            }
+            throw e
+        }
+        val graded = pending.copy(status = "graded", verdict = grade.verdict, feedback = grade.feedback, reasoning = grade.reasoning, sourceIds = grade.sourceIds)
+        val finished = pendingExercise.copy(attempts = pendingExercise.attempts.map { if (it.id == pending.id) graded else it })
+        val child = grade.followUp?.let { ReviewExercise(UUID.randomUUID().toString(), it.unitId, it.kind, it.question, it.options, exercise.id) }
+        val threadId = "exercise:${pending.id}"
+        val chinese = current.input.language == "zh"
+        val answerLabel = if (chinese) "学生回答" else "Student answer"
+        val verdictLabel = if (chinese) when (grade.verdict) { "correct" -> "正确"; "partial" -> "部分正确"; "incorrect" -> "不正确"; else -> "不明确" } else when (grade.verdict) { "correct" -> "Correct"; "partial" -> "Partially correct"; "incorrect" -> "Incorrect"; else -> "Unclear" }
+        val prompt = listOf(exercise.question, exercise.options.joinToString("\n"), "$answerLabel: $answer").filter { it.isNotBlank() }.joinToString("\n\n")
+        val thread = ReviewQaThread(threadId, exercise.unitId, listOf(ReviewQaTurn(prompt, "$verdictLabel\n\n${grade.feedback}\n\n${grade.reasoning}", sourceIds = grade.sourceIds, id = threadId)))
+        val next = current.copy(exercises = current.exercises.map { if (it.id == exerciseId) finished else it } + listOfNotNull(child), qaThreads = current.qaThreads.filterNot { it.id == threadId } + thread, exerciseNotices = current.exerciseNotices + listOfNotNull(child?.let { ReviewExerciseNotice(UUID.randomUUID().toString(), it.id) }), updatedAt = System.currentTimeMillis())
+        ReviewExerciseCodec.validate(next); store.save(next); requireNotNull(store.load(current.input.sessionId, current.input.sourceHash))
+    }
+
+    suspend fun ackExerciseNotice(run: ReviewRun, noticeId: String): Boolean = qaLock.withLock {
+        val current = requireNotNull(store.load(run.input.sessionId, run.input.sourceHash))
+        val notice = current.exerciseNotices.single { it.id == noticeId }
+        if (notice.consumed) return@withLock false
+        store.save(current.copy(exerciseNotices = current.exerciseNotices.map { if (it.id == noticeId) it.copy(consumed = true) else it }))
+        true
+    }
+
     fun cancel(sessionId: String) { jobs[sessionId]?.cancel() }
 
     suspend fun isCurrent(run: ReviewRun, prepared: ReviewInput? = null): Boolean = repo?.reviewMatchesCurrent(run, prepared) ?: matches(run)

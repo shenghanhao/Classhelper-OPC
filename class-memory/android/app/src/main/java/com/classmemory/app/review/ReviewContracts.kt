@@ -17,7 +17,7 @@ data class ReviewOutline(val overview: String, val sections: List<ReviewSection>
 data class ReviewUnit(val id: String, val title: String, val explanation: String, val conditions: String, val classroomFocus: String, val example: String?, val sourceIds: List<String>, val photoIds: List<String>, val sectionIds: List<String>, val markdown: String = "")
 data class ReviewStep(val title: String, val instruction: String, val unitIds: List<String>, val task: String = instruction, val completionCriteria: String = "")
 data class ReviewPlan(val title: String, val introduction: String, val suggestedDate: String, val steps: List<ReviewStep>)
-data class ReviewRun(val input: ReviewInput, val outline: ReviewOutline? = null, val units: Map<String, ReviewUnit> = emptyMap(), val plan: ReviewPlan? = null, val errors: Map<String, String> = emptyMap(), val reviewedAt: Long? = null, val updatedAt: Long, val completedStepIndices: Set<Int> = emptySet(), val qaThreads: List<ReviewQaThread> = emptyList(), val graph: ReviewGraph? = null, val unitVersions: Map<String, List<String>> = emptyMap(), val notesProcessed: Boolean = false, val photoAnalyses: Map<String, ReviewPhotoAnalysis> = emptyMap())
+data class ReviewRun(val input: ReviewInput, val outline: ReviewOutline? = null, val units: Map<String, ReviewUnit> = emptyMap(), val plan: ReviewPlan? = null, val errors: Map<String, String> = emptyMap(), val reviewedAt: Long? = null, val updatedAt: Long, val completedStepIndices: Set<Int> = emptySet(), val qaThreads: List<ReviewQaThread> = emptyList(), val graph: ReviewGraph? = null, val unitVersions: Map<String, List<String>> = emptyMap(), val notesProcessed: Boolean = false, val photoAnalyses: Map<String, ReviewPhotoAnalysis> = emptyMap(), val exercises: List<ReviewExercise> = emptyList(), val exerciseNotices: List<ReviewExerciseNotice> = emptyList())
 data class ReviewQaTurn(val question: String, val answerMarkdown: String, val clarificationNeeded: Boolean = false, val sourceIds: List<String> = emptyList(), val id: String = java.util.UUID.randomUUID().toString(), val status: String = "answered")
 data class ReviewQaThread(val id: String, val targetUnitId: String?, val turns: List<ReviewQaTurn>, val noteId: String? = null, val relatedNoteIds: List<String> = emptyList())
 data class ReviewGraphEdge(val fromUnitId: String, val toUnitId: String, val relation: String)
@@ -135,6 +135,7 @@ object ReviewContracts {
         }
         require(run.photoAnalyses.all { (id, analysis) -> id == analysis.photoId && id in run.input.selectedVisionPhotoIds && run.input.photos.any { it.id == id && it.atMs == analysis.atMs } && analysis.observation.isNotBlank() && analysis.uncertainty.isNotBlank() })
         require(run.outline == null || run.photoAnalyses.keys == run.input.selectedVisionPhotoIds.toSet())
+        ReviewExerciseCodec.validate(run)
         require(run.errors.keys.all { it == "outline" || it == "plan" || (it.startsWith("photo:") && it.removePrefix("photo:") in run.input.selectedVisionPhotoIds) || (it.startsWith("unit:") && outline?.topics?.any { topic -> it == "unit:${topic.id}" } == true) })
     }
 }
@@ -184,6 +185,7 @@ object ReviewJson {
         .put("graph", value.graph?.let { g -> JSONObject().put("nodes", array(g.nodes)).put("edges", array(g.edges.map { e -> JSONObject().put("fromUnitId", e.fromUnitId).put("toUnitId", e.toUnitId).put("relation", e.relation) })) } ?: JSONObject.NULL)
         .put("unitVersions", JSONObject().also { o -> value.unitVersions.forEach { (id, versions) -> o.put(id, array(versions)) } }).put("notesProcessed", value.notesProcessed)
         .put("photoAnalyses", array(value.photoAnalyses.values.map { JSONObject().put("photoId", it.photoId).put("atMs", it.atMs).put("observation", it.observation).put("uncertainty", it.uncertainty) }))
+        .put("exercises", ReviewExerciseCodec.exercises(value.exercises)).put("exerciseNotices", ReviewExerciseCodec.notices(value.exerciseNotices))
     fun run(o: JSONObject): ReviewRun {
         require(o.n("schemaVersion") == 2L)
         val units = o.getJSONArray("units").mapObjects { unit(it) }
@@ -197,6 +199,6 @@ object ReviewJson {
             if (o.has("completedStepIndices")) { val a = o.getJSONArray("completedStepIndices"); (0 until a.length()).map { a.getInt(it) }.toSet() } else if (!o.isNull("reviewedAt") && !o.isNull("plan")) plan(o.getJSONObject("plan")).steps.indices.toSet() else emptySet(),
             o.optJSONArray("qaThreads")?.mapObjects { t -> ReviewQaThread(t.s("id"), t.nullableString("targetUnitId"), t.getJSONArray("turns").mapObjects { q -> ReviewQaTurn(q.s("question"), q.s("answerMarkdown"), q.getBoolean("clarificationNeeded"), q.strings("sourceIds"), q.optString("id", java.util.UUID.randomUUID().toString()), q.optString("status", "answered")) }, t.nullableString("noteId"), if (t.has("relatedNoteIds")) t.strings("relatedNoteIds") else emptyList()) } ?: emptyList(),
             o.optJSONObject("graph")?.let { g -> ReviewGraph(g.strings("nodes"), g.getJSONArray("edges").mapObjects { ReviewGraphEdge(it.s("fromUnitId"), it.s("toUnitId"), it.s("relation")) }) },
-            o.optJSONObject("unitVersions")?.let { v -> v.keys().asSequence().associateWith { v.strings(it) } } ?: emptyMap(), o.optBoolean("notesProcessed", false), photoAnalyses.associateBy { it.photoId }).also { ReviewContracts.validate(it) }
+            o.optJSONObject("unitVersions")?.let { v -> v.keys().asSequence().associateWith { v.strings(it) } } ?: emptyMap(), o.optBoolean("notesProcessed", false), photoAnalyses.associateBy { it.photoId }, if (o.has("exercises")) ReviewExerciseCodec.exercises(o.getJSONArray("exercises")) else emptyList(), if (o.has("exerciseNotices")) ReviewExerciseCodec.notices(o.getJSONArray("exerciseNotices")) else emptyList()).also { ReviewContracts.validate(it) }
     }
 }

@@ -68,6 +68,30 @@ class ReviewStore(private val directory: File) {
     suspend fun save(run: ReviewRun) = lock.withLock {
         withContext(Dispatchers.IO) { write(run) }
     }
+    private fun exerciseDraftPath(sessionId: String, sourceHash: String, exerciseId: String): File {
+        require(exerciseId.isNotBlank())
+        val snapshot = path(sessionId, sourceHash)
+        check(snapshot.isFile && read(snapshot).exercises.any { it.id == exerciseId }) { "Exercise not found" }
+        val id = MessageDigest.getInstance("SHA-256").digest(exerciseId.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 255) }
+        return contained(File(File(sessionDirectory(sessionId), "drafts"), "$sourceHash-$id.txt"))
+    }
+    suspend fun loadExerciseDraft(sessionId: String, sourceHash: String, exerciseId: String): String? = lock.withLock {
+        withContext(Dispatchers.IO) { exerciseDraftPath(sessionId, sourceHash, exerciseId).let { if (it.isFile) it.readText() else null } }
+    }
+    suspend fun saveExerciseDraft(sessionId: String, sourceHash: String, exerciseId: String, answer: String) = lock.withLock {
+        withContext(Dispatchers.IO) {
+            val file = exerciseDraftPath(sessionId, sourceHash, exerciseId)
+            if (answer.isEmpty()) { if (file.exists()) check(file.delete()) { "Cannot clear exercise draft" } }
+            else {
+                check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs()) { "Cannot create exercise draft directory" }
+                val temporary = File.createTempFile("draft-", ".tmp", file.parentFile)
+                try {
+                    FileOutputStream(temporary).use { output -> output.write(answer.toByteArray(Charsets.UTF_8)); output.fd.sync() }
+                    check(temporary.renameTo(file)) { "Cannot save exercise draft" }
+                } finally { temporary.delete() }
+            }
+        }
+    }
     suspend fun deleteSession(sessionId: String) = lock.withLock {
         withContext(Dispatchers.IO) {
             val folder = sessionDirectory(sessionId)

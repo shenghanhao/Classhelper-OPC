@@ -5,6 +5,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 interface ReviewGateway {
+    suspend fun generateExercises(input: ReviewInput, outline: ReviewOutline, units: List<ReviewUnit>): List<ReviewExerciseDraft> = error("代理模式暂不支持练习 / Exercises require a direct DeepSeek connection")
+    suspend fun gradeExercise(input: ReviewInput, outline: ReviewOutline, units: List<ReviewUnit>, exercise: ReviewExercise, answer: String, allowFollowUp: Boolean): ReviewExerciseGrade = error("代理模式暂不支持练习 / Exercises require a direct DeepSeek connection")
     suspend fun analyzePhoto(ref: ReviewPhotoRef, bytes: ByteArray): ReviewPhotoAnalysis = error("当前代理不支持板书照片识别，请选择直连 DeepSeek / Board photo recognition requires a direct DeepSeek connection")
     fun withPhotoAnalyses(analyses: List<ReviewPhotoAnalysis>): ReviewGateway { check(analyses.isEmpty()) { "当前代理不支持板书照片识别，请选择直连 DeepSeek / Board photo recognition requires a direct DeepSeek connection" }; return this }
     suspend fun outline(input: ReviewInput): ReviewOutline

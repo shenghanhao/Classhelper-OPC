@@ -23,7 +23,7 @@ class ReviewNavigationTest {
         val withErrors = withPlan.copy(errors = mapOf("photo:p" to "失败"))
         assertEquals(5, reviewUnitIndex(withErrors, "a"))
         assertEquals("unit:b", reviewListKeys(withErrors)[requireNotNull(reviewUnitIndex(withErrors, "b"))])
-        assertEquals("whole-class-questions", reviewListKeys(withErrors).last())
+        assertEquals("exercises", reviewListKeys(withErrors).last())
         assertEquals(4, reviewUnitIndex(withErrors.copy(errors = emptyMap()), "a"))
     }
 
@@ -33,7 +33,7 @@ class ReviewNavigationTest {
         val partial = ReviewRun(input, outline = outline, units = mapOf("b" to unit("b")), updatedAt = 1L)
         assertNull(reviewUnitIndex(partial, "a"))
         assertEquals(3, reviewUnitIndex(partial, "b"))
-        assertEquals(listOf("header", "actions", "outline", "unit:b", "whole-class-questions"), reviewListKeys(partial))
+        assertEquals(listOf("header", "actions", "outline", "unit:b", "whole-class-questions", "exercises"), reviewListKeys(partial))
         assertEquals(2, reviewUnitIndex(partial.copy(outline = null), "b"))
     }
 }
