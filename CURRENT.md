@@ -19,9 +19,33 @@
 | 课程上下文、模型和构建准备 | [课程上下文](docs/COURSE_CONTEXT.md)、[ASR 权重](docs/MODELS.md)、[Android 安装包](docs/OPC_APK_DELIVERY.md) |
 | 自建复盘服务 | [服务配置和 V3 请求协议](class-memory/study-agent-server/README.md) |
 
-## 此版本的交付与验收
+## v0.3.1 修复与交接
 
-本次安装包取自公开代码提交 `c8e2ff5203cdcff8c2ce5ff2bd02324d191f151b`。发布标签 `v0.3.0` 包含同一套代码和本交接记录。[APK 和校验文件](https://github.com/shenghanhao/Classhelper-OPC/releases/tag/v0.3.0)
+本次代码提交为 `26896d33b7963cb27e9844aa11e4d54aef648c50`，发布标签为 `v0.3.1`。[APK 下载](https://github.com/shenghanhao/Classhelper-OPC/releases/tag/v0.3.1)
+
+- 首页名称固定为「课堂记忆 / Class Memory」。语言菜单显式选择目标语种，重新生成当前页面内容；页面位置和复盘状态保留在重绘范围之外。沿用原语言偏好设置。
+- OPC 和 Debug 首页均提供「导入课堂录音」。既有 Decoder、Activity、Service 从 `src/debug` 移到 `src/main`，沿用本地识别及 Room 存储。录音与文件导入互斥，后台导入可从通知返回。
+- OPC 导入界面使用完整文件普通识别。Debug 保留压测、报告和外部自动化入口。OPC 导入组件只允许应用内部打开。
+- 应用 ID 沿用前版。Debug 升为 `0.3.1` / code `3`，OPC 升为 `0.3.1-opc.3` / code `10003`。
+
+Debug 和 OPC 安装包均构建成功，签名证书与 v0.3.0 一致。已检查两份合并清单及 APK 类定义中的导入入口和后台服务。
+
+专项验证已通过 `AppLanguageTest` 三项及 `DebugAudioDecoderResamplerTest` 两项。语言测试覆盖来回切换、持久化和重新初始化。此前现场语言切换异常的具体触发条件仍待真机确认。
+
+从 `class-memory/android` 运行本次检查
+
+```sh
+./gradlew :app:testDebugUnitTest \
+  --tests 'com.classmemory.app.i18n.AppLanguageTest' \
+  --tests 'com.classmemory.app.benchmark.DebugAudioDecoderResamplerTest' \
+  -PasrModel=xasr -PasrComparison=true -PasrHotwordProfile=none
+```
+
+下一次手机验收从首页三点菜单开始，依次切换中文、英文、中文，重启后确认语种；再选择一份录音进行导入，检查历史文字和详情导出。一次导入结束后可开始正常麦克风课堂。
+
+## v0.3.0 验证记录
+
+v0.3.0 安装包取自公开代码提交 `c8e2ff5203cdcff8c2ce5ff2bd02324d191f151b`。发布标签 `v0.3.0` 包含同一套代码和本交接记录。[APK 和校验文件](https://github.com/shenghanhao/Classhelper-OPC/releases/tag/v0.3.0)
 
 | 验收项目 | 结果 |
 | --- | --- |
@@ -29,7 +53,7 @@
 | 服务端模拟验证 | 合成输入覆盖 V3 HTTP 接口、问答上下文与来源、课堂疑问和注释的归属与正文更新、无效图节点的拒绝。 |
 | Android 构建 | 从上述公开源代码成功构建 Debug 和 OPC。两份 arm64 APK 均通过 Android 签名校验，已核对应用 ID、版本、内置 X-ASR 权重和公式渲染资源。 |
 
-在 Dot 中拉取下列开发分支即可继续提交。重现本次发布使用标签 `v0.3.0`。
+在 Dot 中拉取下列开发分支即可继续提交。重现当前发布使用标签 `v0.3.1`。
 
 ```sh
 git clone --branch codex/opc-qa-graph --single-branch https://github.com/shenghanhao/Classhelper-OPC.git
