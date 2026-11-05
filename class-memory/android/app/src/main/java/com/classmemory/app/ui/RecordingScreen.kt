@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +35,8 @@ import com.classmemory.app.data.ClassroomNote
 import com.classmemory.app.data.ClassroomNoteKind
 import com.classmemory.app.service.RecordingService
 import com.classmemory.app.i18n.tr
+import com.classmemory.app.ui.icons.ClassMemoryIcons
+import com.classmemory.app.ui.theme.ClassMemoryColors
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -111,6 +114,7 @@ fun RecordingScreen(
     }
     val recentFinals by repo.segments(sessionId.orEmpty()).collectAsState(emptyList())
     val currentSessionId = state.sessionId ?: sessionId
+    val currentSession by remember(repo, currentSessionId) { repo.session(currentSessionId.orEmpty()) }.collectAsState(null)
     val boardPhotos by repo.photos(currentSessionId.orEmpty()).collectAsState(emptyList())
     val currentBoardPhotos = currentSessionId?.let { currentSessionBoardPhotos(boardPhotos, it) }.orEmpty()
     val notesSessionId = noteSessionId?.takeIf { noteText.isNotBlank() } ?: sessionId
@@ -158,9 +162,16 @@ fun RecordingScreen(
     BackHandler(enabled = noteText.isNotBlank() && !noteEditorOpen) { noteEditorOpen = true }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(tr("课堂记录", "Class recording"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                title = {
+                    Column {
+                        Text(currentSession?.courseType?.takeIf { it.isNotBlank() } ?: tr("课堂记录", "Class recording"), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!currentSession?.courseType.isNullOrBlank()) Text(tr("课堂记录", "Class recording"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
                 actions = {
                     if (finished) {
                         TextButton(
@@ -184,7 +195,7 @@ fun RecordingScreen(
                         ) {
                             Text(
                                 if (ending) tr("正在结束…", "Ending…") else tr("结束课堂", "End class"),
-                                color = if (ending) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                color = if (ending) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -195,8 +206,8 @@ fun RecordingScreen(
         },
         bottomBar = {
             if (finished) {
-                Surface(modifier = Modifier.navigationBarsPadding(), tonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Surface(modifier = Modifier.navigationBarsPadding(), color = MaterialTheme.colorScheme.background) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                         RecordingNotesSection(
                             boardSessionId = null,
                             boardPhotos = emptyList(),
@@ -222,8 +233,8 @@ fun RecordingScreen(
                     }
                 }
             } else if (state.sessionId != null) {
-                Surface(modifier = Modifier.navigationBarsPadding(), tonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Surface(modifier = Modifier.navigationBarsPadding(), color = MaterialTheme.colorScheme.background) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                         RecordingNotesSection(
                             boardSessionId = currentSessionId,
                             boardPhotos = currentBoardPhotos,
@@ -245,7 +256,7 @@ fun RecordingScreen(
                             onAddQuestion = { openNote(ClassroomNoteKind.QUESTION) },
                             onAddComment = { openNote(ClassroomNoteKind.COMMENT) },
                         )
-                        OutlinedButton(
+                        Button(
                             onClick = {
                                 try {
                                     val (temporary, uri) = createTemporaryBoardPhoto(context)
@@ -264,6 +275,7 @@ fun RecordingScreen(
                             },
                             enabled = !ending && !savingNote && !pendingPhoto && !savingPhoto,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(12.dp),
                         ) {
                             CameraSymbol()
                             Spacer(Modifier.width(10.dp))
@@ -280,12 +292,12 @@ fun RecordingScreen(
             }
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 4.dp),
-        ) {
+        BoxWithConstraints(Modifier.padding(padding).fillMaxSize()) {
+          val compact = maxHeight < 430.dp
+          // An expanded photo tray on a short screen must not squeeze transcription to zero.
+          val constrained = maxHeight < 280.dp
+          val compactPageScroll = rememberScrollState()
+          Column(Modifier.fillMaxSize().then(if (constrained) Modifier.verticalScroll(compactPageScroll) else Modifier).padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)) {
             RecordingHeader(
                 label = when {
                     finished && completionMessage != null && !completionIsWarning -> tr("异常结束", "Ended unexpectedly")
@@ -293,7 +305,7 @@ fun RecordingScreen(
                     finished -> tr("课堂已保存", "Class saved")
                     ending -> tr("等待最后一句确认", "Waiting for the final phrase")
                     state.error != null -> tr("本地识别异常", "Local recognition error")
-                    state.asrReady -> tr("正在记录", "Recording")
+                    state.asrReady -> tr("本地转写中", "Transcribing locally")
                     else -> tr("准备本地识别", "Preparing ASR")
                 },
                 tone = when {
@@ -306,6 +318,7 @@ fun RecordingScreen(
                     else -> RecordingTone.Warning
                 },
                 seconds = seconds,
+                compact = compact,
             )
 
             val recordingError = if (finished) null else state.error
@@ -319,10 +332,12 @@ fun RecordingScreen(
             }
 
             if (finished) {
-                CompletionContent(completionMessage, completionIsWarning, state.finalCount)
+                Column((if (constrained) Modifier.heightIn(max = 250.dp) else Modifier.weight(1f)).verticalScroll(rememberScrollState())) {
+                    CompletionContent(completionMessage, completionIsWarning, state.finalCount)
+                }
             } else {
                 RecordingContent(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    modifier = (if (constrained) Modifier.height(250.dp) else Modifier.weight(1f)).fillMaxWidth(),
                     stateReady = state.asrReady,
                     recentFinals = newestSegmentsFirst(recentFinals),
                     finalCount = state.finalCount,
@@ -330,6 +345,7 @@ fun RecordingScreen(
                     ending = ending,
                 )
             }
+          }
         }
     }
 
@@ -478,47 +494,57 @@ private fun RecordingNotesSection(
     onAddQuestion: () -> Unit,
     onAddComment: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-        if (boardSessionId != null) RecordingBoardPreview(boardSessionId, boardPhotos, photoOwnerScope, onDeletePhoto, onPhotoDeleteResult)
-        Row(Modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            val latest = newestNote(notes)
-            Text(
-                text = when {
-                    hasDraft -> tr("有未保存草稿 · 点击恢复编辑", "Unsaved draft · tap to resume")
-                    latest != null -> noteSummary(latest)
-                    else -> tr("暂无标注", "No notes yet")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .then(if (hasDraft) Modifier.clickable(enabled = enabled, onClick = onResumeDraft) else Modifier),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(tr("${notes.size} 条", "${notes.size}"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    val colors = ClassMemoryColors.current
+    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.75f)),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { if (hasDraft) onResumeDraft() else onAddQuestion() }, enabled = enabled, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                TextButton(onClick = { if (hasDraft) onResumeDraft() else onAddQuestion() }, enabled = enabled, modifier = Modifier.weight(1f).heightIn(min = 44.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp)) {
+                    Icon(ClassMemoryIcons.Question, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
                     Text(tr("添加疑问", "Add question"), style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                Box(Modifier.width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                TextButton(onClick = { if (hasDraft) onResumeDraft() else onAddComment() }, enabled = enabled, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Box(Modifier.width(1.dp).height(20.dp).background(colors.primary.copy(alpha = 0.45f)))
+                TextButton(onClick = { if (hasDraft) onResumeDraft() else onAddComment() }, enabled = enabled, modifier = Modifier.weight(1f).heightIn(min = 44.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp)) {
+                    Icon(ClassMemoryIcons.Edit, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
                     Text(tr("添加注释", "Add comment"), style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
+        val latest = newestNote(notes)
+        Surface(
+            shape = RoundedCornerShape(9.dp),
+            color = if (hasDraft || latest?.kind == ClassroomNoteKind.QUESTION) colors.warningBackground else colors.surfaceAlt,
+            modifier = Modifier.fillMaxWidth().then(if (hasDraft) Modifier.clickable(enabled = enabled, onClick = onResumeDraft) else Modifier),
+        ) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(horizontal = 9.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ClassMemoryIcons.Notebook, null, Modifier.size(15.dp), tint = colors.primary)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = when {
+                        hasDraft -> tr("草稿未保存 · 点击继续编辑", "Unsaved draft · tap to resume")
+                        latest != null -> noteSummary(latest)
+                        else -> tr("暂无标注", "No notes yet")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(tr("${notes.size} 条", "${notes.size}"), modifier = Modifier.padding(start = 8.dp), style = MaterialTheme.typography.labelSmall, color = colors.muted)
+            }
+        }
         (message ?: photoMessage ?: savedMessage)?.takeIf { it.isNotBlank() }?.let {
             val isError = message != null || isUiErrorMessage(it)
-            Text(it, color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            Text(it, color = if (isError) colors.error else colors.primary, style = MaterialTheme.typography.labelSmall, maxLines = 2)
         }
+        if (boardSessionId != null) RecordingBoardPreview(boardSessionId, boardPhotos, photoOwnerScope, onDeletePhoto, onPhotoDeleteResult)
     }
 }
 
@@ -527,25 +553,32 @@ private fun RecordingHeader(
     label: String,
     tone: RecordingTone,
     seconds: Long,
+    compact: Boolean,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    val colors = ClassMemoryColors.current
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = colors.surfaceAlt,
     ) {
-        StatusPill(label, tone, Modifier.weight(1f))
-        Text(
-            text = formatDuration(seconds),
-            color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 24.sp,
-            lineHeight = 28.sp,
-            letterSpacing = (-1).sp,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                StatusPill(label, tone)
+                Text(
+                    text = formatDuration(seconds),
+                    modifier = Modifier.padding(top = 4.dp),
+                    color = colors.text,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (compact) 25.sp else 31.sp,
+                    lineHeight = if (compact) 30.sp else 37.sp,
+                    letterSpacing = (-1).sp,
+                    maxLines = 1,
+                )
+                if (!compact) Text(tr("只保存文字，不保存录音", "Text saved · audio not stored"), style = MaterialTheme.typography.bodySmall, color = colors.muted, modifier = Modifier.padding(top = 2.dp))
+            }
+            if (!compact) NotebookIllustration(Modifier.padding(start = 8.dp).size(86.dp))
+        }
     }
 }
 
@@ -554,12 +587,12 @@ private fun StatusPill(label: String, tone: RecordingTone, modifier: Modifier = 
     val (container, content) = toneColors(tone)
     Surface(modifier = modifier, color = container, contentColor = content, shape = CircleShape) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(content))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -584,7 +617,7 @@ private fun RecordingErrorDetails(
             }
         }
         if (expanded) {
-            Text(detail, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(detail, modifier = Modifier.fillMaxWidth().heightIn(max = 84.dp).verticalScroll(rememberScrollState()).padding(start = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -601,31 +634,25 @@ private fun RecordingContent(
     val newest = recentFinals.take(3)
     val recentText = newest.joinToString("\n") { "${formatDuration(it.startMs / 1_000)}  ${it.text}" }
     val (temporaryWeight, confirmedWeight) = recordingTranscriptWeights()
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            TranscriptSection(
-                modifier = Modifier.weight(temporaryWeight).fillMaxWidth(),
-                label = when {
-                    ending -> tr("正在结束 · 临时文字 · 尚未保存", "Ending · temporary text · not saved")
-                    stateReady -> tr("正在识别 · 临时文字 · 尚未保存", "Recognizing · temporary text · not saved")
-                    else -> tr("准备中 · 临时文字 · 尚未保存", "Preparing · temporary text · not saved")
-                },
-                text = partial.ifBlank { if (stateReady) tr("暂时没有语音", "No speech yet") else tr("识别准备中…", "Preparing recognition…") },
-                partial = true,
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-            TranscriptSection(
-                modifier = Modifier.weight(confirmedWeight).fillMaxWidth(),
-                label = tr("最近已确认 · 已保存 $finalCount 字", "Recently confirmed · $finalCount characters saved"),
-                text = recentText.ifBlank { if (stateReady) tr("暂无已确认文字", "No confirmed text yet") else tr("等待本地识别…", "Waiting for local recognition…") },
-                partial = false,
-            )
-        }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TranscriptSection(
+            modifier = Modifier.weight(temporaryWeight).fillMaxWidth(),
+            label = when {
+                ending -> tr("正在结束 · 临时文字 · 尚未保存", "Ending · temporary text · not saved")
+                stateReady -> tr("临时文字 · 尚未保存", "Temporary text · not saved")
+                else -> tr("准备中 · 临时文字 · 尚未保存", "Preparing · temporary text · not saved")
+            },
+            text = partial.ifBlank { if (stateReady) tr("暂时没有语音", "No speech yet") else tr("识别准备中…", "Preparing recognition…") },
+            partial = true,
+        )
+        TranscriptSection(
+            modifier = Modifier.weight(confirmedWeight).fillMaxWidth(),
+            label = tr("最近已确认", "Recently confirmed"),
+            text = recentText.ifBlank { if (stateReady) tr("暂无已确认文字", "No confirmed text yet") else tr("等待本地识别…", "Waiting for local recognition…") },
+            partial = false,
+            segments = newest,
+            savedCount = finalCount,
+        )
     }
 }
 
@@ -642,7 +669,14 @@ private fun CameraSymbol() {
 }
 
 @Composable
-private fun TranscriptSection(modifier: Modifier, label: String, text: String, partial: Boolean) {
+private fun TranscriptSection(
+    modifier: Modifier,
+    label: String,
+    text: String,
+    partial: Boolean,
+    segments: List<com.classmemory.app.data.TranscriptSegment> = emptyList(),
+    savedCount: Int = 0,
+) {
     val scrollState = rememberScrollState()
     val direction = if (partial) TranscriptDirection.LATEST_AT_END else TranscriptDirection.LATEST_AT_START
     var followLatest by remember { mutableStateOf(true) }
@@ -671,21 +705,61 @@ private fun TranscriptSection(modifier: Modifier, label: String, text: String, p
             scrollState.scrollTo(if (direction == TranscriptDirection.LATEST_AT_START) 0 else scrollState.maxValue)
         }
     }
-    BoxWithConstraints(modifier.nestedScroll(userScrollConnection)) {
-        Column(Modifier.fillMaxSize().padding(horizontal = if (maxWidth < 360.dp) 12.dp else 16.dp, vertical = 9.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                if (partial) partialTranscriptInOrder(text) else text,
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 5.dp).verticalScroll(scrollState),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            if (!followLatest) {
-                TextButton(
-                    onClick = { followLatest = true },
-                    modifier = Modifier.align(Alignment.End).heightIn(min = 32.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                ) { Text(tr("回到最新", "Back to latest"), style = MaterialTheme.typography.labelMedium) }
+    val colors = ClassMemoryColors.current
+    Surface(modifier.nestedScroll(userScrollConnection), color = colors.surface, shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, colors.border)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val tight = maxHeight < 100.dp
+            Column(Modifier.fillMaxSize().padding(horizontal = 11.dp, vertical = if (tight) 5.dp else 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (partial) Icon(ClassMemoryIcons.Edit, null, Modifier.size(17.dp), tint = colors.primary)
+                    else Box(Modifier.size(17.dp).background(colors.success, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(ClassMemoryIcons.Check, null, Modifier.size(13.dp), tint = colors.surface)
+                    }
+                    Text(label, modifier = Modifier.weight(1f).padding(start = 7.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 5.dp)
+                        .then(if (partial) Modifier.background(colors.surfaceAlt.copy(alpha = 0.75f), RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 6.dp) else Modifier)
+                        .verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    if (!partial && segments.isNotEmpty()) {
+                        segments.forEach { segment ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Column(Modifier.padding(top = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(Modifier.size(7.dp).border(1.5.dp, colors.primary.copy(alpha = 0.65f), CircleShape))
+                                    Box(Modifier.padding(top = 3.dp).width(1.dp).height(30.dp).background(colors.border))
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Surface(shape = RoundedCornerShape(50), color = colors.surfaceAlt) {
+                                        Text(formatDuration(segment.startMs / 1_000), Modifier.padding(horizontal = 7.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = colors.text)
+                                    }
+                                    Surface(modifier = Modifier.fillMaxWidth().padding(top = 2.dp), shape = RoundedCornerShape(7.dp), color = colors.background, border = BorderStroke(0.5.dp, colors.border)) {
+                                        Text(segment.text, Modifier.padding(horizontal = 8.dp, vertical = 5.dp), style = MaterialTheme.typography.bodyMedium, color = colors.text)
+                                    }
+                                }
+                            }
+                        }
+                    } else Text(
+                        if (partial) partialTranscriptInOrder(text) else text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (partial) colors.primary else colors.muted,
+                        fontStyle = if (partial) FontStyle.Italic else FontStyle.Normal,
+                    )
+                }
+                if (!tight) Text(
+                    if (partial) tr("内容可能继续修订", "Text may still change") else tr("已保存 $savedCount 字", "$savedCount characters saved"),
+                    modifier = Modifier.align(Alignment.End).padding(top = 3.dp),
+                    style = MaterialTheme.typography.labelSmall, color = colors.muted,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (!followLatest) {
+                    TextButton(
+                        onClick = { followLatest = true },
+                        modifier = Modifier.align(Alignment.End).heightIn(min = 28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) { Text(tr("回到最新", "Back to latest"), style = MaterialTheme.typography.labelSmall) }
+                }
             }
         }
     }
@@ -756,7 +830,7 @@ private fun InlineMessageCard(
 
 @Composable
 private fun toneColors(tone: RecordingTone): Pair<Color, Color> = when (tone) {
-    RecordingTone.Success -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+    RecordingTone.Success -> ClassMemoryColors.current.successBackground to ClassMemoryColors.current.success
     RecordingTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
     RecordingTone.Error -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
     RecordingTone.Neutral -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant

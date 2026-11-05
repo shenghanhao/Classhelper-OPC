@@ -30,6 +30,12 @@ object ClassMemoryIcons {
     val Camera by lazy { vector("Camera", "M3 8h4l2 -3h6l2 3h4v11H3z", "M12 10a3 3 0 1 0 0 6a3 3 0 1 0 0 -6z", "M6 11h.1") }
     val Stop by lazy { vector("Stop", "M6 6h12v12H6z") }
     val History by lazy { vector("History", "M5 8a8 8 0 1 1 -1 5", "M4 4v4h4", "M12 7v5l3 2") }
+    val Home by lazy { vector("Home", "M3 10l9 -7 9 7", "M5 9v12h5v-7h4v7h5V9") }
+    val Book by lazy { vector("Book", "M12 5Q7 2 3 4v16q5 -2 9 1q4 -3 9 -1V4q-4 -2 -9 1v16") }
+    val ChevronRight by lazy { vector("ChevronRight", "M9 6l6 6 -6 6") }
+    val ArrowUp by lazy { vector("ArrowUp", "M12 21V3", "M5 10l7 -7 7 7") }
+    val Question by lazy { vector("Question", "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18", "M9 9a3 3 0 1 1 5 2c-2 1 -2 2 -2 3", "M12 17v.1") }
+    val Layers by lazy { vector("Layers", "M2 8l10 -5 10 5 -10 5z", "M2 12l10 5 10 -5", "M2 16l10 5 10 -5") }
     val Settings by lazy { vector("Settings", "M12 3v3", "M12 18v3", "M3 12h3", "M18 12h3", "M5.6 5.6l2.1 2.1", "M16.3 16.3l2.1 2.1", "M18.4 5.6l-2.1 2.1", "M7.7 16.3l-2.1 2.1", "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0 -8z") }
     val Edit by lazy { vector("Edit", "M4 17l10 -10 3 3 -10 10H4z", "M12 9l3 3", "M17 7l2 -2 2 2 -2 2") }
     val Trash by lazy { vector("Trash", "M5 7h14", "M8 7V5h8v2", "M7 7l1 14h8l1 -14", "M10 11v6", "M14 11v6") }

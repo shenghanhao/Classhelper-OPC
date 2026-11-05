@@ -1,7 +1,9 @@
 package com.classmemory.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -15,6 +17,7 @@ import com.classmemory.app.data.Session
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.repository.SessionRepository
 import com.classmemory.app.ui.theme.ClassMemoryColors
+import com.classmemory.app.ui.icons.ClassMemoryIcons
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -22,7 +25,8 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClass: (String) -> Unit) {
+fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClass: (String) -> Unit,
+    initialCourseId: String? = null, createNew: Boolean = false, onSaved: ((String) -> Unit)? = null) {
     val palette = ClassMemoryColors.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(CourseContextState()) }
@@ -31,12 +35,20 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
     var assignTarget by remember { mutableStateOf<Session?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
+    var initialEditorOpened by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
     fun back() { if (draft != null) discard = true else onBack() }
     BackHandler { if (!busy) back() }
     LaunchedEffect(repo) {
-        try { repo.courseContexts().collect { state = it; loaded = true } }
+        try { repo.courseContexts().collect {
+            state = it; loaded = true
+            if (!initialEditorOpened) {
+                if (createNew) draft = CourseContext()
+                else if (initialCourseId != null) draft = it.courses.firstOrNull { course -> course.id == initialCourseId }
+                initialEditorOpened = true
+            }
+        } }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: tr("课程读取失败", "Couldn't load courses") }
     }
@@ -44,14 +56,14 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
         containerColor = palette.background,
         topBar = {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { back() }, enabled = !busy) { Text(tr("返回", "Back")) }
+                IconButton(onClick = { back() }, enabled = !busy) { Icon(ClassMemoryIcons.Back, tr("返回", "Back")) }
                 Text(if (draft == null) tr("课程上下文", "Course context") else tr("编辑课程", "Edit course"),
                     style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 if (draft != null) TextButton(enabled = !busy && draft!!.name.isNotBlank(), onClick = {
                     val candidate = draft ?: return@TextButton
                     busy = true
                     scope.launch {
-                        try { repo.saveCourseContext(candidate); draft = null; error = null }
+                        try { repo.saveCourseContext(candidate); draft = null; error = null; onSaved?.invoke(candidate.id) }
                         catch (e: CancellationException) { throw e }
                         catch (e: Exception) { error = e.message ?: tr("保存失败", "Save failed") }
                         finally { busy = false }
@@ -60,12 +72,22 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
             }
         },
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             error?.let { message -> item { Text(message, color = palette.error) } }
             val editing = draft
             if (editing != null) {
-                item { Text(tr("保存即确认以下内容。课程资料与个人掌握情况分开记录。", "Save to confirm these course facts. They are separate from your learning progress."), color = palette.muted) }
+                item {
+                    Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(18.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(tr("让复习，更贴近这门课", "Give your review the right context"), style = MaterialTheme.typography.titleMedium)
+                                Text(tr("背景、目标与术语会用于后续复习；不代表个人掌握程度。", "Background, goals and terminology guide reviews, independently of your progress."), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                            }
+                            NotebookIllustration(Modifier.size(78.dp))
+                        }
+                    }
+                }
                 item { ContextField(tr("课程名称", "Course name"), editing.name, !busy) { draft = editing.copy(name = it) } }
                 item { ContextField(tr("课程背景", "Background"), editing.background, !busy) { draft = editing.copy(background = it) } }
                 item { ContextField(tr("学习目标", "Learning goals"), editing.goals, !busy) { draft = editing.copy(goals = it) } }
@@ -82,7 +104,7 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
                 if (!loaded && error == null) item { Text(tr("读取中…", "Loading…")) }
                 if (loaded && state.courses.isEmpty()) item { Text(tr("先新建课程，再将下方课堂归入课程。原有分类标签与热词库保持独立。", "Create a course, then assign classes below. Labels and hotword libraries remain separate.")) }
                 items(state.courses, key = { "course:${it.id}" }) { course ->
-                    OutlinedCard(Modifier.fillMaxWidth()) {
+                    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = palette.surface), border = BorderStroke(1.dp, palette.border), shape = RoundedCornerShape(15.dp)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(course.name, style = MaterialTheme.typography.titleLarge)
                             Text(tr("版本 ${course.revision} · 用户确认", "Revision ${course.revision} · User confirmed"), color = palette.muted)
@@ -104,7 +126,7 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
                 item { Text(tr("课堂归属", "Class assignments"), style = MaterialTheme.typography.titleLarge) }
                 item { Text(tr("每节课堂归入一门课程；改名不会改变关联。修改课程资料后，后续分析会重新检查上下文版本。", "Assign each class to one course. Renaming preserves links; analysis checks the context revision after edits."), color = palette.muted) }
                 items(sessions, key = { "session:${it.id}" }) { session ->
-                    OutlinedCard(Modifier.fillMaxWidth()) {
+                    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = palette.surface), border = BorderStroke(1.dp, palette.border), shape = RoundedCornerShape(15.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             Text(classLabel(session))
                             Text(state.courseFor(session.id)?.name ?: tr("未归入课程", "Unassigned"), color = palette.primary)
@@ -119,7 +141,7 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
         }
     }
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text(tr("放弃未保存修改？", "Discard unsaved changes?")) },
-        confirmButton = { TextButton(onClick = { draft = null; discard = false }) { Text(tr("放弃", "Discard")) } },
+        confirmButton = { TextButton(onClick = { draft = null; discard = false; if (onSaved != null) onBack() }) { Text(tr("放弃", "Discard")) } },
         dismissButton = { TextButton(onClick = { discard = false }) { Text(tr("继续编辑", "Keep editing")) } })
     assignTarget?.let { target ->
         fun assign(courseId: String?) {
@@ -145,7 +167,7 @@ fun CourseContextsScreen(repo: SessionRepository, onBack: () -> Unit, onOpenClas
 @Composable
 private fun ContextField(label: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     OutlinedTextField(value = value, onValueChange = onChange, enabled = enabled, label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(), minLines = 2)
+        modifier = Modifier.fillMaxWidth(), minLines = 2, shape = RoundedCornerShape(12.dp))
 }
 
 private fun classLabel(session: Session): String =

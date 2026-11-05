@@ -27,6 +27,9 @@ val displayModelLabel = when (asrHotwordProfile) {
 }
 val asrAppLabel = "Class Memory"
 val opcDeviceTest = providers.gradleProperty("opcDeviceTest").getOrElse("false").toBooleanStrict()
+// Local UI acceptance only: permits seeding synthetic data with adb run-as.
+// It does not add certificates, endpoints or fixtures; never enable for delivery.
+val opcVisualCheck = providers.gradleProperty("opcVisualCheck").getOrElse("false").toBooleanStrict()
 val opcDeviceResources = layout.buildDirectory.dir("generated/opc-device-res")
 val stageOpcDeviceResources by tasks.registering {
     val ca = providers.gradleProperty("opcDeviceCaFile")
@@ -90,8 +93,8 @@ android {
         applicationId = "com.classmemory.app.publish"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.4.1"
+        versionCode = 8
+        versionName = "0.5.0"
         buildConfigField("String", "ASR_MODEL_ID", "\"$asrModel\"")
         buildConfigField("String", "ASR_MODEL_DIR", "\"$asrModelDirectory\"")
         buildConfigField("String", "ASR_MODEL_LABEL", "\"$displayModelLabel\"")
@@ -110,9 +113,9 @@ android {
         create("opc") {
             initWith(getByName("release"))
             applicationIdSuffix = ".opc2026"
-            versionNameSuffix = "-opc.7"
+            versionNameSuffix = "-opc.8"
             buildConfigField("String", "STUDY_AGENT_URL", "\"$studyAgentUrl\"")
-            isDebuggable = opcDeviceTest
+            isDebuggable = opcDeviceTest || opcVisualCheck
             resValue("string", "app_name", if (opcDeviceTest) "ClassMemory OPC 设备测试" else "ClassMemory AI · OPC")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
@@ -135,8 +138,8 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("opc")) { variant ->
         variant.outputs.forEach { output ->
-            output.versionCode.set(10007)
-            output.versionName.set("0.4.1-opc.7")
+            output.versionCode.set(10008)
+            output.versionName.set("0.5.0-opc.8")
         }
     }
 }

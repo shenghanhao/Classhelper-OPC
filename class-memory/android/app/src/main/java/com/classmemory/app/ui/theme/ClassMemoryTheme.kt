@@ -35,21 +35,21 @@ data class ClassMemoryPalette(
 )
 
 private val LightPalette = ClassMemoryPalette(
-    background = Color(0xFFF3F7F7), surface = Color.White, surfaceAlt = Color(0xFFE8F1F2),
-    primary = Color(0xFF0D6471), onPrimary = Color.White, text = Color(0xFF173139),
-    muted = Color(0xFF587078), border = Color(0xFFD4E2E4),
-    success = Color(0xFF167052), successBackground = Color(0xFFE1F5EA),
-    warning = Color(0xFF976111), warningBackground = Color(0xFFFFF2D9),
-    error = Color(0xFFB13C49), errorBackground = Color(0xFFFCEAEC),
+    background = Color(0xFFFAFAFF), surface = Color(0xFFFFFFFF), surfaceAlt = Color(0xFFEEEBFF),
+    primary = Color(0xFF4E36E9), onPrimary = Color.White, text = Color(0xFF1B1B28),
+    muted = Color(0xFF686A80), border = Color(0xFFDCDCF0),
+    success = Color(0xFF008777), successBackground = Color(0xFFE0F5EF),
+    warning = Color(0xFFAB5D09), warningBackground = Color(0xFFFFF3E2),
+    error = Color(0xFFB53650), errorBackground = Color(0xFFFFEAF0),
 )
 
 private val DarkPalette = ClassMemoryPalette(
-    background = Color(0xFF10191D), surface = Color(0xFF1B282D), surfaceAlt = Color(0xFF25363C),
-    primary = Color(0xFF79D5DC), onPrimary = Color(0xFF0E2F36), text = Color(0xFFE9F3F3),
-    muted = Color(0xFFA9BEC3), border = Color(0xFF3C5157),
-    success = Color(0xFF7CD0A9), successBackground = Color(0xFF1D3A33),
-    warning = Color(0xFFF0C475), warningBackground = Color(0xFF3E3422),
-    error = Color(0xFFFFB4B9), errorBackground = Color(0xFF44282D),
+    background = Color(0xFF14131D), surface = Color(0xFF1E1D2B), surfaceAlt = Color(0xFF302A4C),
+    primary = Color(0xFFBCB0FF), onPrimary = Color(0xFF24125D), text = Color(0xFFF1EFFB),
+    muted = Color(0xFFB8B4CA), border = Color(0xFF454156),
+    success = Color(0xFF76D9C4), successBackground = Color(0xFF153D37),
+    warning = Color(0xFFFFC784), warningBackground = Color(0xFF443320),
+    error = Color(0xFFFFACC0), errorBackground = Color(0xFF492736),
 )
 
 private val LocalClassMemoryPalette = compositionLocalOf { LightPalette }
@@ -60,7 +60,7 @@ object ClassMemoryColors {
 }
 
 object ClassMemorySpacing {
-    val screen = 23.dp
+    val screen = 20.dp
     val section = 24.dp
     val card = 16.dp
     val item = 10.dp
@@ -90,7 +90,7 @@ fun ClassMemoryTheme(content: @Composable () -> Unit) {
     val palette = if (isSystemInDarkTheme()) DarkPalette else LightPalette
     val scheme = if (isSystemInDarkTheme()) darkColorScheme(
         primary = palette.primary, onPrimary = palette.onPrimary,
-        primaryContainer = palette.surfaceAlt, onPrimaryContainer = palette.primary,
+        primaryContainer = palette.surfaceAlt, onPrimaryContainer = palette.text,
         secondary = palette.primary, onSecondary = palette.onPrimary,
         secondaryContainer = palette.surfaceAlt, onSecondaryContainer = palette.text,
         tertiary = palette.warning, onTertiary = palette.background,
@@ -103,7 +103,7 @@ fun ClassMemoryTheme(content: @Composable () -> Unit) {
         errorContainer = palette.errorBackground, onErrorContainer = palette.error,
     ) else lightColorScheme(
         primary = palette.primary, onPrimary = palette.onPrimary,
-        primaryContainer = palette.surfaceAlt, onPrimaryContainer = palette.primary,
+        primaryContainer = palette.surfaceAlt, onPrimaryContainer = palette.text,
         secondary = palette.primary, onSecondary = palette.onPrimary,
         secondaryContainer = palette.surfaceAlt, onSecondaryContainer = palette.text,
         tertiary = palette.warning, onTertiary = palette.onPrimary,

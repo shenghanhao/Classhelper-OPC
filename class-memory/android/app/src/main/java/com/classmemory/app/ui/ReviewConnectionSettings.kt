@@ -5,6 +5,8 @@ import android.content.ContextWrapper
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,7 @@ import com.classmemory.app.review.ReviewConnection
 import com.classmemory.app.review.ReviewConnectionMode
 import com.classmemory.app.review.ReviewConnectionPreferences
 import com.classmemory.app.ui.theme.ClassMemoryColors
+import com.classmemory.app.ui.icons.ClassMemoryIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,11 +61,20 @@ fun ReviewConnectionSettings(onBack: () -> Unit) {
     BackHandler(enabled = !saving, onBack = onBack)
     Scaffold(containerColor = ClassMemoryColors.current.background, topBar = {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, enabled = !saving) { Text(tr("返回", "Back")) }
-            Text(tr("复习服务设置", "Review service settings"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = onBack, enabled = !saving) { Icon(ClassMemoryIcons.Back, contentDescription = tr("返回", "Back")) }
+            Text(tr("复习服务", "Review connection"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Surface(shape = RoundedCornerShape(20.dp), color = ClassMemoryColors.current.surfaceAlt) {
+                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(tr("让课堂，成为复习线索", "Turn a class into a study guide"), style = MaterialTheme.typography.titleLarge)
+                        Text(tr("本地记录 · 按需联网整理", "Local capture · online review when you choose"), style = MaterialTheme.typography.bodyMedium, color = ClassMemoryColors.current.muted)
+                    }
+                    NotebookIllustration(Modifier.size(76.dp))
+                }
+            }
             ConnectionChoice(
                 tr("手机直连 DeepSeek", "Connect to DeepSeek on this phone"),
                 mode == ReviewConnectionMode.DIRECT_DEEPSEEK, !saving,
@@ -79,7 +92,7 @@ fun ReviewConnectionSettings(onBack: () -> Unit) {
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                 )
-                Text(tr("API Key 使用此手机的安全密钥加密保存。", "The API key is encrypted using this device's secure key."))
+                Text(tr("API Key 使用此手机的安全密钥加密保存。", "The API key is encrypted using this device's secure key."), style = MaterialTheme.typography.bodySmall, color = ClassMemoryColors.current.muted)
                 credentialWarning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(tr("模型", "Model"), style = MaterialTheme.typography.titleSmall)
                 for (choice in listOf("deepseek-flash", "deepseek-v4-pro")) {
@@ -120,7 +133,7 @@ fun ReviewConnectionSettings(onBack: () -> Unit) {
                 )
                 Text(tr("此模式由你的服务端配置模型供应商密钥。", "Configure the model provider key on your server for this mode."))
             }
-            Text(tr("发送前可预览课堂资料。音频和板书图片保留在本地。", "Preview classroom material before sending it. Audio and board photos stay on the device."))
+            Text(tr("发送前可预览课堂资料。不会上传录音；板书仅在你选择图片辅助并确认后发送。", "Preview classroom material before sending. Audio is never uploaded; board photos are sent only when you opt in and confirm."), style = MaterialTheme.typography.bodySmall, color = ClassMemoryColors.current.muted)
             message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             Button(enabled = !saving, onClick = {
                 saving = true
@@ -142,19 +155,22 @@ fun ReviewConnectionSettings(onBack: () -> Unit) {
                         message = tr("无法安全保存设置，请清除旧密钥后重试", "Could not securely save settings. Clear the old key and try again.")
                     } finally { saving = false }
                 }
-            }, modifier = Modifier.fillMaxWidth()) { Text(if (saving) tr("保存中…", "Saving…") else tr("保存", "Save")) }
+            }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(14.dp)) { Text(if (saving) tr("保存中…", "Saving…") else tr("保存连接设置", "Save connection settings")) }
         }
     }
 }
 
 @Composable
 private fun ConnectionChoice(label: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
+    val palette = ClassMemoryColors.current
+    Surface(shape = RoundedCornerShape(14.dp), color = if (selected) palette.surfaceAlt else palette.surface, border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)) {
     Row(
-        Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect),
+        Modifier.fillMaxWidth().selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = null, enabled = enabled)
         Spacer(Modifier.width(8.dp))
-        Text(label, modifier = Modifier.weight(1f))
+        Text(label, modifier = Modifier.weight(1f).padding(end = 10.dp), fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
     }
 }

@@ -1,5 +1,6 @@
 package com.classmemory.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -74,6 +75,9 @@ fun HomeScreen(
     var courseFilter by remember { mutableStateOf<CourseFilter>(CourseFilter.All) }
     var filterMenuExpanded by remember { mutableStateOf(false) }
     val filteredSessions = remember(sessions, courseFilter) { filterSessions(sessions, courseFilter) }
+    var classroomTab by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = classroomTab) { classroomTab = false }
+    val displayedSessions = if (classroomTab) filteredSessions else sessions.take(3)
 
     LaunchedEffect(courseTypes, courseFilter) {
         val selected = courseFilter
@@ -89,18 +93,13 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 65.dp).padding(horizontal = ClassMemorySpacing.screen),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier.size(30.dp).background(palette.primary, RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(ClassMemoryIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp), tint = palette.onPrimary)
+                Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                    Text(if (classroomTab) tr("我的课堂", "My classes") else tr("今天，从这里开始", "Start here today"),
+                        style = MaterialTheme.typography.headlineSmall, color = palette.text)
+                    Text(if (classroomTab) tr("课堂记忆 · 完整记录", "Class Memory · Your records") else
+                        remember(english) { SimpleDateFormat(if (english) "MMM d · EEEE" else "M月d日 · EEEE", Locale.getDefault()).format(Date()) },
+                        style = MaterialTheme.typography.bodySmall, color = palette.muted, modifier = Modifier.padding(top = 3.dp))
                 }
-                Text(
-                    tr("课堂记忆", "Class Memory"),
-                    style = if (supportsCourseHotwords) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f).padding(start = 10.dp),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
                 Box {
                         IconButton(onClick = { debugMenuExpanded = true }, modifier = Modifier.size(48.dp)) {
                             Icon(ClassMemoryIcons.More, contentDescription = if (supportsCourseHotwords) tr("更多", "More") else tr("更多", "More options"), tint = palette.muted)
@@ -112,6 +111,7 @@ fun HomeScreen(
                                     if (!appending) onImport()
                                 })
                             }
+                            DropdownMenuItem(text = { Text(tr("设置", "Settings")) }, onClick = { debugMenuExpanded = false; onSettings() })
                             DropdownMenuItem(
                                 text = { Text(if (english) "切换 中文" else "Switch to English") },
                                 onClick = {
@@ -138,62 +138,53 @@ fun HomeScreen(
                         )
                     }
                 }
-                TextButton(onClick = onSettings, modifier = Modifier.widthIn(min = 48.dp, max = 72.dp).heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text(tr("设置", "Settings"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            Surface(color = palette.surface, shadowElevation = 3.dp) {
+                Column {
+                    Button(onClick = { if (!appending) onStart() }, enabled = !appending,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = ClassMemorySpacing.screen, vertical = 10.dp).heightIn(min = 50.dp),
+                        shape = RoundedCornerShape(15.dp)) {
+                        Icon(ClassMemoryIcons.Mic, contentDescription = null, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(tr("开始记录课堂", "Start a class"))
+                    }
+                    NavigationBar(containerColor = palette.surface, tonalElevation = 0.dp) {
+                        NavigationBarItem(colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = palette.primary, selectedTextColor = palette.primary,
+                            unselectedIconColor = palette.muted, unselectedTextColor = palette.muted,
+                        ), selected = !classroomTab, onClick = { classroomTab = false },
+                            icon = { Icon(ClassMemoryIcons.Home, null) }, label = { Text(tr("首页", "Home")) })
+                        NavigationBarItem(colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = palette.primary, selectedTextColor = palette.primary,
+                            unselectedIconColor = palette.muted, unselectedTextColor = palette.muted,
+                        ), selected = classroomTab, onClick = { classroomTab = true },
+                            icon = { Icon(ClassMemoryIcons.Book, null) }, label = { Text(tr("课堂", "Classes")) })
+                        NavigationBarItem(colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = palette.primary, selectedTextColor = palette.primary,
+                            unselectedIconColor = palette.muted, unselectedTextColor = palette.muted,
+                        ), selected = false, onClick = onSettings,
+                            icon = { Icon(ClassMemoryIcons.Settings, null) }, label = { Text(tr("设置", "Settings")) })
+                    }
+                }
+            }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = ClassMemorySpacing.screen, end = ClassMemorySpacing.screen, top = 4.dp, bottom = 25.dp),
             verticalArrangement = Arrangement.spacedBy(11.dp),
         ) {
-            if (reviewRuntime != null && (BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "opc")) item {
-                PendingReviews(repo, reviewRuntime, sessions, onReview)
+            if (!classroomTab) {
+                if (reviewRuntime != null && (BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "opc")) item {
+                    PendingReviews(repo, reviewRuntime, sessions, onReview)
+                } else item { HomeWelcomeCard() }
             }
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(palette.surfaceAlt, RoundedCornerShape(24.dp)).padding(20.dp),
-                ) {
-                    Text(tr("本地课堂记录", "Local Class Notes"), style = MaterialTheme.typography.labelMedium, color = palette.primary, fontWeight = FontWeight.Bold)
-                    Text(
-                        tr("把今天的课堂留下来", "Keep a record of today's class"), style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    if (supportsCourseHotwords && hotwordUiState.enabled) {
-                        Surface(
-                            modifier = Modifier.padding(top = 7.dp, bottom = 17.dp).heightIn(min = 48.dp).clickable(onClick = { chooseHotwordCourse = true }),
-                            color = palette.surface,
-                            shape = RoundedCornerShape(100.dp),
-                            border = BorderStroke(1.dp, palette.border),
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("热词词库", "Hotword library"), style = MaterialTheme.typography.labelMedium, color = palette.primary)
-                                Spacer(Modifier.width(9.dp))
-                                Text(hotwordUiState.selectedCourse.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                                Text(tr("更改", "Change"), style = MaterialTheme.typography.labelMedium, color = palette.muted)
-                            }
-                        }
-                    } else {
-                        Text(
-                            tr("语音只在手机本地识别。只保存最终文字和你主动拍摄的板书，不保存课堂录音文件。", "Speech is recognized on this device. Only final text and board photos you take are saved; class audio is not stored."),
-                            style = MaterialTheme.typography.bodyMedium, color = palette.muted,
-                            modifier = Modifier.padding(top = 7.dp, bottom = 17.dp),
-                        )
-                    }
-                    Button(
-                        onClick = { if (!appending) onStart() },
-                        enabled = !appending,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                        shape = RoundedCornerShape(17.dp),
-                        contentPadding = PaddingValues(horizontal = 15.dp, vertical = 13.dp),
-                    ) {
-                        Icon(ClassMemoryIcons.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(9.dp))
-                        Text(tr("开始记录", "Start recording"), style = MaterialTheme.typography.labelLarge)
-                    }
+            if (supportsCourseHotwords && hotwordUiState.enabled) item {
+                OutlinedButton(onClick = { chooseHotwordCourse = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(tr("热词词库：${hotwordUiState.selectedCourse.name}", "Hotwords: ${hotwordUiState.selectedCourse.name}"))
                 }
             }
             item {
@@ -201,8 +192,9 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(tr("历史课堂", "Past classes"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Box {
+                    Text(if (classroomTab) tr("全部课堂", "All classes") else tr("最近课堂", "Recent classes"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    if (!classroomTab) TextButton(onClick = { classroomTab = true }) { Text(tr("查看全部 →", "View all →")) }
+                    if (classroomTab) Box {
                         FilterChip(
                             selected = courseFilter !is CourseFilter.All,
                             onClick = { if (!appending) filterMenuExpanded = true },
@@ -269,13 +261,13 @@ fun HomeScreen(
                                 modifier = Modifier.padding(top = 9.dp),
                             )
                             Text(
-                                tr("从上方“开始记录”进入", "Tap “Start recording” above to begin"), style = MaterialTheme.typography.labelMedium,
+                                tr("点击下方“开始记录课堂”", "Tap “Start a class” below"), style = MaterialTheme.typography.labelMedium,
                                 color = palette.primary, modifier = Modifier.padding(top = 15.dp),
                             )
                         }
                     }
                 }
-            } else if (filteredSessions.isEmpty()) {
+            } else if (displayedSessions.isEmpty()) {
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(), color = palette.surface,
@@ -298,7 +290,7 @@ fun HomeScreen(
                     }
                 }
             } else {
-                items(filteredSessions, key = { it.id }) { session ->
+                items(displayedSessions, key = { it.id }) { session ->
                     SessionCard(
                         session = session,
                         onOpen = { if (!appending) onDetail(session.id) },
@@ -306,6 +298,7 @@ fun HomeScreen(
                         onDelete = { if (!appending) deleteTarget = session },
                         onAppend = { if (!appending) { appendTargetId = session.id; appendSourceId = null; appendError = null } },
                         operationsEnabled = !appending,
+                        compact = !classroomTab,
                     )
                 }
             }
@@ -404,50 +397,7 @@ fun HomeScreen(
     }
 
     renameTarget?.takeIf { !appending }?.let { target ->
-        var draft by remember(target.id) { mutableStateOf(target.title.orEmpty()) }
-        var selectedType by remember(target.id) { mutableStateOf(target.courseType) }
-        var typeMenuExpanded by remember(target.id) { mutableStateOf(false) }
-        var saving by remember(target.id) { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { if (!saving) renameTarget = null },
-            title = { Text(tr("编辑课堂信息", "Edit class details")) },
-            text = {
-                Column {
-                    Text(tr("修改名称和类型，课堂文字与板书不会改变。", "Changing the name or type won't affect class notes or board photos."), style = MaterialTheme.typography.bodyMedium, color = palette.muted)
-                    OutlinedTextField(
-                        value = draft, onValueChange = { if (it.length <= 60) draft = it },
-                        label = { Text(tr("课程名称", "Class name")) }, supportingText = { Text(tr("最多 60 个字符", "Up to 60 characters")) },
-                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    )
-                    ExposedDropdownMenuBox(expanded = typeMenuExpanded, onExpandedChange = { typeMenuExpanded = it }) {
-                        OutlinedTextField(
-                            value = selectedType?.let(::displayCourseType) ?: tr("未分类", "Uncategorized"), onValueChange = {}, readOnly = true,
-                            label = { Text(tr("课程类型", "Course type")) },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(typeMenuExpanded) },
-                            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-                        )
-                        ExposedDropdownMenu(expanded = typeMenuExpanded, onDismissRequest = { typeMenuExpanded = false }) {
-                            DropdownMenuItem(text = { Text(tr("未分类", "Uncategorized")) }, onClick = { selectedType = null; typeMenuExpanded = false })
-                            courseTypes.forEach { type ->
-                                DropdownMenuItem(text = { Text(displayCourseType(type.name)) }, onClick = { selectedType = type.name; typeMenuExpanded = false })
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = draft.isNotBlank() && !saving, onClick = {
-                    saving = true
-                    scope.launch {
-                        runCatching { repo.updateMetadata(target.id, draft, selectedType) }
-                            .onSuccess { renameTarget = null }
-                            .onFailure { snackbar.showSnackbar(it.message ?: tr("课堂信息保存失败", "Failed to save class details")) }
-                        saving = false
-                    }
-                }) { Text(if (saving) tr("保存中…", "Saving…") else tr("保存", "Save")) }
-            },
-            dismissButton = { TextButton(onClick = { renameTarget = null }, enabled = !saving) { Text(tr("取消", "Cancel")) } },
-        )
+        ClassInformationEditor(repo = repo, session = target, onClose = { renameTarget = null })
     }
 
     deleteTarget?.takeIf { !appending }?.let { target ->
@@ -527,7 +477,7 @@ internal fun appendSessionDisplayLabel(session: Session): String =
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SessionCard(session: Session, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onAppend: () -> Unit, operationsEnabled: Boolean) {
+private fun SessionCard(session: Session, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onAppend: () -> Unit, operationsEnabled: Boolean, compact: Boolean = false) {
     val palette = ClassMemoryColors.current
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
     val (organizedColor, organizedBackground) = if (session.isOrganized) {
@@ -547,6 +497,12 @@ private fun SessionCard(session: Session, onOpen: () -> Unit, onEdit: () -> Unit
                     session.title ?: tr("未命名课堂", "Untitled class"), style = MaterialTheme.typography.titleSmall,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
+                if (compact) {
+                    Text(
+                        tr("${session.courseType?.let(::displayCourseType) ?: "未分类"} · ${formatDuration(session.durationSec)}", "${session.courseType?.let(::displayCourseType) ?: "Uncategorized"} · ${formatDuration(session.durationSec)}"),
+                        style = MaterialTheme.typography.bodySmall, color = palette.muted, modifier = Modifier.padding(top = 5.dp), maxLines = 2,
+                    )
+                } else {
                 FlowRow(
                     modifier = Modifier.padding(top = 9.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -565,6 +521,7 @@ private fun SessionCard(session: Session, onOpen: () -> Unit, onEdit: () -> Unit
                     style = MaterialTheme.typography.bodySmall, color = palette.muted,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                }
             }
             Box(modifier = Modifier.align(Alignment.TopEnd)) {
                 IconButton(

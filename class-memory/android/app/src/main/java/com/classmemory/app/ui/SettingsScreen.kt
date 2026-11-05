@@ -83,14 +83,24 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             item {
-                OutlinedButton(onClick = { manageContexts = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(tr("课程上下文 · 查看与编辑", "Course context · View and edit"))
+                Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(20.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text(tr("让课堂按你的方式整理", "Make the classroom yours"), style = MaterialTheme.typography.titleMedium)
+                            Text(tr("课程背景、复习连接与分类", "Course context, review connection and labels"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                        }
+                        NotebookIllustration(Modifier.size(82.dp))
+                    }
                 }
             }
+            item { Text(tr("复习设置", "Review settings"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
             item {
-                OutlinedButton(onClick = onReviewSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(tr("复习服务连接", "Review service connection"))
-                }
+                SettingsDestination(ClassMemoryIcons.Layers, tr("课程上下文", "Course context"),
+                    tr("背景、目标、章节与课堂关联", "Background, goals, chapters and class links")) { manageContexts = true }
+            }
+            item {
+                SettingsDestination(ClassMemoryIcons.Question, tr("复习服务连接", "Review connection"),
+                    tr("配置 DeepSeek 或自己的服务", "Configure DeepSeek or your own service"), onReviewSettings)
             }
             if (supportsCourseHotwords) {
                 item {
@@ -118,7 +128,7 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { Text(tr("添加课程类型", "Add course type"), style = MaterialTheme.typography.titleMedium) }
+            item { Text(tr("课堂分类", "Class labels"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp)) }
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
@@ -225,5 +235,21 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }, enabled = !deleting) { Text(tr("取消", "Cancel")) } },
         )
+    }
+}
+
+@Composable
+private fun SettingsDestination(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, description: String, onClick: () -> Unit) {
+    val palette = ClassMemoryColors.current
+    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = palette.surface), border = BorderStroke(1.dp, palette.border)) {
+        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+            Icon(icon, null, tint = palette.primary, modifier = Modifier.size(25.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = palette.muted)
+            }
+            Icon(ClassMemoryIcons.ChevronRight, null, tint = palette.muted, modifier = Modifier.size(19.dp))
+        }
     }
 }

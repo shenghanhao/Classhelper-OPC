@@ -1,5 +1,7 @@
 package com.classmemory.app.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -7,6 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import com.classmemory.app.ui.icons.ClassMemoryIcons
+import com.classmemory.app.ui.theme.ClassMemoryColors
 import androidx.compose.ui.unit.dp
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.review.*
@@ -33,17 +38,23 @@ internal fun ReviewExerciseHeader(
     onCancel: () -> Unit,
 ) {
     var confirming by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(tr("课后练习", "After-class practice"), style = MaterialTheme.typography.titleLarge)
+    val palette = ClassMemoryColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ReviewSectionHeading(tr("课后练习", "After-class practice"), number = "05")
         if (run.exercises.isEmpty()) {
             val count = reviewExerciseTargetCount(run.units.size)
-            Text(tr("根据本课知识量生成约 $count 道练习，选择题与简答题搭配，用自己的文字说明答案和思路。", "Generate about $count questions based on this class, mixing multiple-choice and short answers. Explain your answers in your own words."))
+            ReviewPaper {
+                Icon(ClassMemoryIcons.Edit, null, Modifier.align(Alignment.CenterHorizontally).size(38.dp), tint = palette.primary)
+                Text(tr("尚未生成练习", "Practice is ready to begin"), style = MaterialTheme.typography.titleLarge)
+                Text(tr("本课 ${run.units.size} 个知识块，生成约 $count 道题。选择与简答搭配，用自己的文字说明答案。", "${run.units.size} topics, about $count questions. A mix of multiple-choice and short answers, explained in your own words."), color = palette.muted)
+            }
             if (run.plan == null) Text(tr("完成课堂复盘后可生成练习。", "Complete the classroom review to generate practice questions."))
             Button(
                 enabled = current && run.plan != null && connection.isConfigured() && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK && !busy,
-                onClick = { confirming = true },
+                onClick = { confirming = true }, modifier = Modifier.fillMaxWidth(),
             ) { Text(tr("生成课后练习", "Generate practice questions")) }
         }
+        if (run.exercises.isNotEmpty()) Text(tr("共 ${run.exercises.size} 道题 · 默认展开，可逐题收起", "${run.exercises.size} questions · expand or collapse each one"), color = palette.muted, style = MaterialTheme.typography.bodySmall)
         if (connection.mode != ReviewConnectionMode.DIRECT_DEEPSEEK) Text(tr("生成与评阅练习需要在服务设置中选择手机直连 DeepSeek。", "Select a direct DeepSeek connection in service settings to generate and grade practice."))
         if (!current) Text(tr("当前资料已过期，可阅读已有练习；更新复盘后再提交。", "This material is outdated. Existing practice remains readable; update the review before submitting."))
         if (busy) {
@@ -77,6 +88,7 @@ internal fun ReviewExerciseCard(
     var answer by remember(draftKey) { mutableStateOf("") }
     var loaded by remember(draftKey) { mutableStateOf(false) }
     var draftError by remember(draftKey) { mutableStateOf<String?>(null) }
+    var draftSaved by remember(draftKey) { mutableStateOf(false) }
     var confirmingAnswer by remember(draftKey) { mutableStateOf<String?>(null) }
     var retryId by remember(draftKey) { mutableStateOf<String?>(null) }
     var saveJob by remember(draftKey) { mutableStateOf<Job?>(null) }
@@ -88,6 +100,7 @@ internal fun ReviewExerciseCard(
         try {
             answer = runtime.store.loadExerciseDraft(run.input.sessionId, run.input.sourceHash, exercise.id).orEmpty()
             loaded = true
+            draftSaved = answer.isNotBlank()
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { draftError = tr("无法读取作答草稿，请重新打开此页面。", "Could not load your draft. Reopen this page.") }
     }
@@ -102,10 +115,15 @@ internal fun ReviewExerciseCard(
             }
         }
     }
-    Card(Modifier.fillMaxWidth()) {
+    Surface(Modifier.fillMaxWidth(), color = ClassMemoryColors.current.surface,
+        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, ClassMemoryColors.current.border)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ReviewDisclosureHeader(exerciseTitle(exercise, number), expanded) { expanded = !expanded }
+            ReviewDisclosureHeader(exerciseTitle(exercise, number) + " · " + exerciseKindLabel(exercise.kind), expanded) { expanded = !expanded }
+            if (!expanded && answer.isNotBlank()) Text(tr("已收起 · 草稿保留", "Collapsed · draft retained"), color = ClassMemoryColors.current.muted, style = MaterialTheme.typography.bodySmall)
             if (expanded) {
+            val unitIndex = orderedReviewUnits(run).indexOfFirst { it.id == exercise.unitId }
+            run.units[exercise.unitId]?.let { ReviewBadge("K%02d · %s".format(unitIndex + 1, it.title)) }
+            if (exercise.parentId != null) Text(tr("针对练习 · 来自练习 ${run.exercises.indexOfFirst { it.id == exercise.parentId } + 1}", "Follow-up · from question ${run.exercises.indexOfFirst { it.id == exercise.parentId } + 1}"), style = MaterialTheme.typography.bodySmall, color = ClassMemoryColors.current.warning)
             ReviewExerciseQuestion(exercise)
             ReviewExerciseAttempts(reviewSnapshotKey(run), exercise, onRetry = { attempt ->
                 retryId = attempt.id
@@ -116,29 +134,34 @@ internal fun ReviewExerciseCard(
                 onValueChange = { value ->
                     answer = value
                     draftError = null
+                    draftSaved = false
                     saveJob?.cancel()
                     saveJob = ownerScope.launch {
                         delay(600)
                         try {
                             runtime.store.saveExerciseDraft(run.input.sessionId, run.input.sourceHash, exercise.id, value)
+                            draftSaved = true
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) { draftError = tr("草稿保存失败，请稍后重试。", "Could not save your draft. Try again shortly.") }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                 enabled = enabled && !busy && loaded,
                 minLines = 3,
                 maxLines = 8,
                 label = { Text(tr("我的作答", "My answer")) },
                 placeholder = { Text(if (exercise.kind == "MCQ") tr("为什么选它、其他选项为什么不对？请写出你的判断和理由。", "Why choose it, and why are the other options wrong? Explain your reasoning.") else tr("写出答案和思考过程。", "Write your answer and reasoning.")) },
             )
+            if (draftSaved && answer.isNotBlank()) Text(tr("✓ 草稿已保存在本机", "✓ Draft saved on this device"), color = ClassMemoryColors.current.success, style = MaterialTheme.typography.bodySmall)
+            if (exercise.kind == "MCQ") Text(tr("请说明选择理由，以及其他选项为什么不对。", "Explain your choice and why the other options are wrong."), color = ClassMemoryColors.current.muted, style = MaterialTheme.typography.bodySmall)
             draftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (busy) TextButton(onClick = onCancel) { Text(tr("取消当前请求", "Cancel current request")) }
             if (answer.isNotBlank() && !canSubmitExerciseAnswer(exercise, answer)) Text(tr("这份作答已保存，可查看评阅或使用对应的重试入口。", "This answer is saved. View its feedback or use its retry action."))
             Button(
                 enabled = enabled && !busy && loaded && canSubmitExerciseAnswer(exercise, answer),
-                onClick = { retryId = null; confirmingAnswer = answer.trim() },
+                onClick = { retryId = null; confirmingAnswer = answer.trim() }, modifier = Modifier.fillMaxWidth(),
             ) { Text(tr("提交作答", "Submit answer")) }
+            Text(tr("提交前确认发送内容", "Confirm what is sent before submitting"), color = ClassMemoryColors.current.muted, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -155,7 +178,8 @@ internal fun ReviewExerciseCard(
 @Composable
 internal fun ReviewExerciseHistory(snapshotKey: String, exercise: ReviewExercise, number: Int) {
     var expanded by rememberSaveable(reviewDisclosureKey(snapshotKey, "exercise", exercise.id)) { mutableStateOf(true) }
-    Card(Modifier.fillMaxWidth()) {
+    Surface(Modifier.fillMaxWidth(), color = ClassMemoryColors.current.surface,
+        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, ClassMemoryColors.current.border)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ReviewDisclosureHeader(exerciseTitle(exercise, number), expanded) { expanded = !expanded }
             if (expanded) {
@@ -170,9 +194,14 @@ internal fun ReviewExerciseHistory(snapshotKey: String, exercise: ReviewExercise
 private fun exerciseTitle(exercise: ReviewExercise, number: Int): String =
     (if (exercise.parentId == null) tr("练习", "Question") else tr("针对练习", "Follow-up")) + " $number"
 
+private fun exerciseKindLabel(kind: String): String = if (kind == "MCQ") tr("选择题", "Multiple choice") else tr("简答题", "Short answer")
+
 @Composable
 private fun ReviewExerciseQuestion(exercise: ReviewExercise) {
-    val content = remember(exercise.question, exercise.options) { (listOf(exercise.question) + exercise.options).joinToString("\n\n") }
+    // Keep one cached rich-text renderer per question; options are read-only quoted cards.
+    val content = remember(exercise.question, exercise.options) {
+        (listOf(exercise.question) + exercise.options.map { "> " + it.replace("\n", "\n> ") }).joinToString("\n\n")
+    }
     ReviewContent(content)
 }
 
@@ -190,17 +219,22 @@ private fun ReviewExerciseAttempts(
     val attempts = if (showEarlier) exercise.attempts else exercise.attempts.takeLast(1)
     attempts.forEach { attempt ->
         Text(tr("我的作答", "My answer"), style = MaterialTheme.typography.titleSmall)
-        Text(attempt.answer)
+        Surface(shape = RoundedCornerShape(12.dp), color = ClassMemoryColors.current.surfaceAlt) {
+            Text(attempt.answer, Modifier.fillMaxWidth().padding(12.dp))
+        }
         if (attempt.status == "graded") {
-            Text(when (attempt.verdict) {
+            ReviewBadge(when (attempt.verdict) {
                 "correct" -> tr("正确", "Correct")
                 "partial" -> tr("部分正确", "Partially correct")
                 "incorrect" -> tr("需要修正", "Needs correction")
                 else -> tr("需要进一步说明", "Needs clarification")
-            }, style = MaterialTheme.typography.titleMedium)
+            }, if (attempt.verdict == "correct") ClassMemoryColors.current.successBackground else ClassMemoryColors.current.warningBackground,
+                if (attempt.verdict == "correct") ClassMemoryColors.current.success else ClassMemoryColors.current.warning)
+            Text(tr("评阅分析", "Feedback"), style = MaterialTheme.typography.titleSmall)
             ReviewContent(attempt.feedback.orEmpty())
             Text(tr("正确思路与讲解", "Explanation and approach"), style = MaterialTheme.typography.titleSmall)
             ReviewContent(attempt.reasoning.orEmpty())
+            ReviewBadge(tr("✓ 作答与反馈已保存到对应知识块问答", "✓ Answer and feedback saved with this topic"), ClassMemoryColors.current.successBackground, ClassMemoryColors.current.success)
         } else {
             Text(if (attempt.status == "pending") tr("等待评阅或上次提交已中断", "Awaiting review, or the previous submission was interrupted") else tr("本次评阅失败，作答已保存。", "Grading failed. Your answer is saved."))
             if (onRetry != null) TextButton(enabled = retryEnabled, onClick = { onRetry(attempt) }) {
@@ -222,7 +256,7 @@ private fun ExerciseSendConsent(submitting: Boolean, enabled: Boolean, onDismiss
                 Text(tr("本次仅发送文字，调用费用由你的 DeepSeek 账户承担。", "This request sends text and is billed to your DeepSeek account."))
             }
         },
-        confirmButton = { TextButton(onClick = onConfirm, enabled = enabled) { Text(tr("同意并发送", "Agree and send")) } },
+        confirmButton = { Button(onClick = onConfirm, enabled = enabled) { Text(tr("同意并发送", "Agree and send")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }

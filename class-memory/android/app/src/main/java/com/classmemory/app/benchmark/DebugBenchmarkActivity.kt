@@ -18,6 +18,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import com.classmemory.app.ui.NotebookIllustration
+import com.classmemory.app.ui.icons.ClassMemoryIcons
+import com.classmemory.app.ui.theme.ClassMemoryColors
+import com.classmemory.app.i18n.AppLanguage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -59,6 +71,7 @@ class DebugBenchmarkActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLanguage.initialize(this)
         setContent {
             ClassMemoryTheme {
                 Surface(
@@ -134,8 +147,19 @@ class DebugBenchmarkActivity : ComponentActivity() {
             Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedButton(onClick = { finish() }) { Text(tr("返回", "Back")) }
-            Text(tr("导入课堂录音", "Import class recording"), style = MaterialTheme.typography.headlineSmall)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { finish() }) { Icon(ClassMemoryIcons.Back, contentDescription = tr("返回", "Back")) }
+                Text(tr("导入课堂录音", "Import a class recording"), style = MaterialTheme.typography.titleLarge)
+            }
+            Surface(shape = RoundedCornerShape(22.dp), color = ClassMemoryColors.current.surfaceAlt) {
+                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(tr("已有录音，也能留下课堂", "Your recording, ready to revisit"), style = MaterialTheme.typography.titleLarge)
+                        Text(tr("WAV / M4A · 手机本地识别", "WAV / M4A · on-device transcription"), color = ClassMemoryColors.current.muted, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    NotebookIllustration(Modifier.size(82.dp))
+                }
+            }
             if (BuildConfig.DEBUG) Text(tr("模型：$modelLabel", "Model: $modelLabel"))
             if (BuildConfig.ASR_HOTWORD_PROFILE == "data_structure") {
                 val timing = if (showingCurrentSession) tr("本次识别", "this run") else tr("下次识别", "next run")
@@ -143,7 +167,7 @@ class DebugBenchmarkActivity : ComponentActivity() {
             }
             if (BuildConfig.ASR_MODEL_ID == "qwen3") Text(tr("按语音短段出字，不是逐字实时出字。", "Text appears in short speech segments, not character by character."))
             Text(tr("选择 WAV、M4A 等音频后，本机完成识别并保存为课堂记录；输入音频不会被复制或长期保存。", "Choose WAV, M4A, or another audio file to transcribe it on this device and save it as a class record. The input audio is not copied or retained."))
-            OutlinedButton(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = !state.running) {
+            OutlinedButton(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = !state.running, modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp), shape = RoundedCornerShape(14.dp)) {
                 Text(if (uri == null) tr("选择音频文件", "Choose audio file") else tr("已选择：${uri?.lastPathSegment ?: "音频文件"}", "Selected: ${uri?.lastPathSegment ?: "Audio file"}"))
             }
             if (BuildConfig.DEBUG) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -162,7 +186,8 @@ class DebugBenchmarkActivity : ComponentActivity() {
             }
             Button(
                 enabled = uri != null && canStart,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                shape = RoundedCornerShape(14.dp),
                 onClick = { startWithGrant(uri ?: return@Button, mode, targetOptions[targetIndex]) },
             ) { Text(tr("开始本地识别", "Start local recognition")) }
             if (recording.sessionId != null) Text(tr("请先结束正在记录的课堂，再导入录音。", "End the current class before importing a recording."))
@@ -173,8 +198,13 @@ class DebugBenchmarkActivity : ComponentActivity() {
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text(tr("状态：${state.status}", "Status: ${state.status}"))
-            Text(tr("已输入：${"%.1f".format(state.inputSeconds)} 秒；最终文字：${state.finalCharacters} 字", "Input: ${"%.1f".format(state.inputSeconds)} s; final characters: ${state.finalCharacters}"))
+            Surface(shape = RoundedCornerShape(16.dp), color = ClassMemoryColors.current.surface, border = BorderStroke(1.dp, ClassMemoryColors.current.border)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(tr("状态：${state.status}", "Status: ${state.status}"), style = MaterialTheme.typography.titleSmall)
+                    if (state.running) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(tr("已处理 ${"%.1f".format(state.inputSeconds)} 秒 · 已保存 ${state.finalCharacters} 字", "Processed ${"%.1f".format(state.inputSeconds)} s · ${state.finalCharacters} characters saved"), style = MaterialTheme.typography.bodyMedium, color = ClassMemoryColors.current.muted)
+                }
+            }
             state.error?.let { Text(tr("提示：$it", "Notice: $it"), color = MaterialTheme.colorScheme.error) }
             if (!state.running && state.sessionId != null) {
                 OutlinedButton(onClick = {

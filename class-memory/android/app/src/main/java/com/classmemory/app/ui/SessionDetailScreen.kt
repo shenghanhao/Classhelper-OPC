@@ -2,6 +2,7 @@ package com.classmemory.app.ui
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +44,7 @@ import com.classmemory.app.repository.BoardPhotoDeletionResult
 import com.classmemory.app.repository.isSafeBoardPhotoPath
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.ui.icons.ClassMemoryIcons
+import com.classmemory.app.ui.theme.ClassMemoryColors
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -74,7 +76,11 @@ fun SessionDetailScreen(
     val snackbar = remember { SnackbarHostState() }
     val timeline = remember(rowsSnapshot, photosSnapshot, notesSnapshot) { buildSessionTimeline(rowsSnapshot, photosSnapshot, notesSnapshot) }
     var timelineFilter by rememberSaveable(id) { mutableStateOf(SessionTimelineFilter.ALL) }
-    var timelineFilterMenuExpanded by remember(id) { mutableStateOf(false) }
+    var actionsExpanded by remember(id) { mutableStateOf(false) }
+    var showDetails by remember(id) { mutableStateOf(false) }
+    var editInformation by remember(id) { mutableStateOf(false) }
+    val isSourceView = initialTimelineKey != null
+    val palette = ClassMemoryColors.current
     val filteredTimeline = remember(timeline, timelineFilter) { filterSessionTimeline(timeline, timelineFilter) }
     val boardPhotoCount = timeline.count { it is SessionTimelineItem.Photo }
     val noteCount = timeline.count { it is SessionTimelineItem.Note }
@@ -93,7 +99,7 @@ fun SessionDetailScreen(
             initialTimelineKey?.let { key ->
                 timelineFilter = SessionTimelineFilter.ALL
                 val index = timeline.indexOfFirst { it.key == key }
-                if (index >= 0) listState.scrollToItem(index + if (showReview) 4 else 3)
+                if (index >= 0) listState.scrollToItem(index + if (showReview && !isSourceView) 3 else 2)
                 else snackbar.showSnackbar(tr("引用的原文已删除或不存在", "The cited source is no longer available"))
             }
         }
@@ -124,77 +130,77 @@ fun SessionDetailScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(session?.title ?: tr("课堂详情", "Class details"), maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = { TextButton(onClick = onBack) { Text(tr("返回", "Back")) } }) },
+        containerColor = palette.background,
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.background),
+                title = { if (isSourceView) Text(tr("课堂原文", "Class transcript")) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(ClassMemoryIcons.Back, tr("返回", "Back")) } },
+                actions = {
+                    Box {
+                        IconButton(onClick = { actionsExpanded = true }) { Icon(ClassMemoryIcons.More, tr("课堂操作", "Class actions")) }
+                        DropdownMenu(actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                            DropdownMenuItem(text = { Text(tr("编辑课堂信息", "Edit class information")) }, onClick = { actionsExpanded = false; editInformation = true }, enabled = session != null)
+                            DropdownMenuItem(text = { Text(tr("整理标记与导出", "Organization and export")) }, onClick = { actionsExpanded = false; showDetails = true })
+                        }
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            Surface(color = palette.surface, shadowElevation = 2.dp) {
+                if (isSourceView) OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 9.dp)) {
+                    Text(tr("返回知识讲解，继续阅读 ↑", "Back to the review ↑"))
+                } else Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(13.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ClassMemoryIcons.Check, null, tint = palette.success, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (session?.status == SessionStatus.recording) tr("课堂正在记录中", "Class recording in progress") else tr("文字已保存在本机", "Notes saved on this device"), color = palette.muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                SessionInformationHeader(
-                    session = session,
-                    photoCount = photosSnapshot.size,
-                    updatingOrganized = updatingOrganized,
-                    onToggleOrganized = {
-                        val current = session ?: return@SessionInformationHeader
-                        if (updatingOrganized) return@SessionInformationHeader
-                        updatingOrganized = true
-                        scope.launch {
-                            runCatching { repo.updateOrganized(current.id, !current.isOrganized) }
-                                .onFailure { snackbar.showSnackbar(it.message ?: tr("更新整理状态失败，请稍后重试", "Couldn't update organization status. Try again.")) }
-                            updatingOrganized = false
-                        }
-                    },
-                )
+                SessionInformationHeader(session, photosSnapshot.size, notesSnapshot.size, rowsSnapshot.size, isSourceView)
             }
-            item { ExportShortcutSection(session != null && dataLoaded && exporting == null, exporting) { exportFormat = it } }
-            if (showReview) item {
-                FilledTonalButton(onClick = onReview, enabled = dataLoaded && session != null && session?.status != SessionStatus.recording,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(tr("课程复习 · 生成或查看方案", "Class review · Create or open"))
-                }
-            }
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("课堂时间线", "Class timeline"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Box {
-                        FilterChip(
-                            selected = timelineFilter != SessionTimelineFilter.ALL,
-                            onClick = { timelineFilterMenuExpanded = true },
-                            label = {
-                                Text(
-                                    timelineFilter.label,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 124.dp),
-                                )
-                            },
-                            modifier = Modifier.semantics { contentDescription = tr("筛选课堂时间线", "Filter class timeline") },
-                        )
-                        DropdownMenu(
-                            expanded = timelineFilterMenuExpanded,
-                            onDismissRequest = { timelineFilterMenuExpanded = false },
-                            modifier = Modifier.widthIn(min = 210.dp),
-                        ) {
-                            TimelineFilterMenuItem(tr("所有", "All"), timeline.size, timelineFilter == SessionTimelineFilter.ALL) {
-                                timelineFilter = SessionTimelineFilter.ALL
-                                timelineFilterMenuExpanded = false
-                            }
-                            TimelineFilterMenuItem(tr("板书", "Board photos"), boardPhotoCount, timelineFilter == SessionTimelineFilter.BOARD_PHOTOS) {
-                                timelineFilter = SessionTimelineFilter.BOARD_PHOTOS
-                                timelineFilterMenuExpanded = false
-                            }
-                            TimelineFilterMenuItem(tr("疑问、注释", "Questions and comments"), noteCount, timelineFilter == SessionTimelineFilter.NOTES) {
-                                timelineFilter = SessionTimelineFilter.NOTES
-                                timelineFilterMenuExpanded = false
-                            }
+            if (showReview && !isSourceView) item {
+                Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(20.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                        NotebookIllustration(Modifier.width(85.dp).height(112.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(tr("把这节课，整理成复习材料", "Turn this class into review notes"), style = MaterialTheme.typography.titleMedium)
+                            Text(tr("结合课程背景 · 保留原文入口", "Course context · Traceable sources"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                            Button(onClick = onReview, enabled = dataLoaded && session != null && session?.status != SessionStatus.recording,
+                                shape = RoundedCornerShape(12.dp)) { Text(tr("整理这节课  →", "Review this class  →")) }
+                            Text(tr("发送前可查看所选文字，需你确认", "Preview and confirm before sending"), style = MaterialTheme.typography.labelSmall, color = palette.muted)
                         }
                     }
                 }
-                Text(tr("转写、疑问、注释与板书按课堂时间排列", "Transcripts, questions, comments, and board photos in class-time order"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!isSourceView) Text(tr("课堂时间线", "Class timeline"), style = MaterialTheme.typography.titleLarge)
+                    Row(Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(12.dp)).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        listOf(SessionTimelineFilter.ALL to tr("全部", "All"), SessionTimelineFilter.BOARD_PHOTOS to tr("板书", "Boards"), SessionTimelineFilter.NOTES to tr("疑问与注释", "Notes")).forEach { (filter, label) ->
+                            Surface(color = if (timelineFilter == filter) palette.primary else palette.surface,
+                                contentColor = if (timelineFilter == filter) palette.onPrimary else palette.muted,
+                                shape = RoundedCornerShape(9.dp), modifier = Modifier.weight(1f).clickable { timelineFilter = filter }) {
+                                Box(Modifier.heightIn(min = 38.dp).padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 2)
+                                }
+                            }
+                        }
+                    }
+                    if (isSourceView && timeline.any { it.key == initialTimelineKey }) Surface(color = palette.successBackground, shape = RoundedCornerShape(10.dp)) {
+                        Text(tr("已定位到课堂来源", "Located the classroom source"), Modifier.fillMaxWidth().padding(12.dp), color = palette.success, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
             if (filteredTimeline.isEmpty()) {
                 item {
@@ -206,10 +212,38 @@ fun SessionDetailScreen(
                 }
             }
             items(filteredTimeline, key = SessionTimelineItem::key) { item ->
-                TimelineItem(item) { photo ->
+                TimelineItem(item, highlighted = item.key == initialTimelineKey) { photo ->
                     if (exporting == null && photo.sessionId == id) selectedPhoto = photo
                 }
             }
+        }
+    }
+
+    if (editInformation) session?.let { current ->
+        ClassInformationEditor(repo, current, onClose = { editInformation = false })
+    }
+    if (showDetails) ModalBottomSheet(onDismissRequest = { showDetails = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(tr("课堂资料", "Class materials"), style = MaterialTheme.typography.headlineSmall)
+            session?.let { current ->
+                Row(Modifier.fillMaxWidth().clickable(enabled = !updatingOrganized) {
+                    updatingOrganized = true
+                    scope.launch {
+                        runCatching { repo.updateOrganized(current.id, !current.isOrganized) }
+                            .onFailure { snackbar.showSnackbar(tr("更新整理状态失败", "Couldn't update organization status")) }
+                        updatingOrganized = false
+                    }
+                }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = current.isOrganized, onCheckedChange = null, enabled = !updatingOrganized)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text(tr("已整理", "Organized"), style = MaterialTheme.typography.titleSmall)
+                        Text(tr("仅标记原始课堂记录，与复习清单分别保存", "A mark for this record, separate from review progress"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                    }
+                }
+                Text(statusText(current.status), style = MaterialTheme.typography.labelMedium, color = palette.muted)
+            }
+            ExportShortcutSection(session != null && dataLoaded && exporting == null, exporting) { showDetails = false; exportFormat = it }
+            Text(tr("导出后系统分享，不含整套 AI 复习资料", "Share the original class record; AI review materials are not included"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
         }
     }
 
@@ -246,59 +280,35 @@ fun SessionDetailScreen(
 }
 
 @Composable
-private fun SessionInformationHeader(
-    session: Session?,
-    photoCount: Int,
-    updatingOrganized: Boolean,
-    onToggleOrganized: () -> Unit,
-) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(Modifier.padding(18.dp)) {
-            Text(session?.title ?: tr("正在读取课堂信息…", "Loading class details…"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            session?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it.courseType?.let(::displayCourseType) ?: tr("未分类课程", "Uncategorized"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it.startedAt)), style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    DetailStat(tr("时长", "Duration"), formatDuration(it.durationSec), Modifier.weight(1f))
-                    DetailStat(tr("文字", "Text"), tr("${it.finalCharCount} 字", "${it.finalCharCount} chars"), Modifier.weight(1f))
-                    DetailStat(tr("板书", "Board photos"), tr("$photoCount 张", "$photoCount"), Modifier.weight(1f))
+private fun SessionInformationHeader(session: Session?, photoCount: Int, noteCount: Int, segmentCount: Int, compact: Boolean) {
+    val palette = ClassMemoryColors.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text(session?.courseType?.let(::displayCourseType) ?: tr("课堂记录", "Class record"), style = MaterialTheme.typography.labelLarge, color = palette.muted)
+        Text(session?.title ?: tr("正在读取课堂信息…", "Loading class details…"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        session?.let {
+            Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it.startedAt)) + " · " + formatDuration(it.durationSec), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+            if (!compact) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    DetailStat(tr("课堂文字", "Transcript"), tr("$segmentCount 段", "$segmentCount parts"), ClassMemoryIcons.File, Modifier.weight(1f))
+                    DetailStat(tr("我的标注", "My notes"), tr("$noteCount 条", "$noteCount"), ClassMemoryIcons.Edit, Modifier.weight(1f))
+                    DetailStat(tr("板书照片", "Boards"), tr("$photoCount 张", "$photoCount"), ClassMemoryIcons.Photo, Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        statusText(it.status),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Row(
-                        modifier = Modifier
-                            .clickable(enabled = !updatingOrganized, onClick = onToggleOrganized)
-                            .padding(start = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(tr("已整理", "Organized"), style = MaterialTheme.typography.labelMedium)
-                        Checkbox(
-                            checked = it.isOrganized,
-                            onCheckedChange = { onToggleOrganized() },
-                            enabled = !updatingOrganized,
-                        )
-                    }
-                }
+                Text(tr("已保存 ${it.finalCharCount} 字", "${it.finalCharCount} characters saved"), style = MaterialTheme.typography.labelSmall, color = palette.muted)
             }
         }
     }
 }
 
 @Composable
-private fun DetailStat(label: String, value: String, modifier: Modifier = Modifier) = Column(modifier) {
-    Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-    Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun DetailStat(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
+    val palette = ClassMemoryColors.current
+    Surface(modifier, shape = RoundedCornerShape(12.dp), color = palette.surface, border = BorderStroke(1.dp, palette.border)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Icon(icon, null, tint = palette.primary, modifier = Modifier.size(21.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = palette.muted, maxLines = 2)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2)
+        }
+    }
 }
 
 @Composable
@@ -353,14 +363,14 @@ private fun ExportOption(format: ExportFormat, selected: ExportFormat, title: St
 }
 
 @Composable
-private fun TimelineItem(item: SessionTimelineItem, onOpenPhoto: (BoardPhoto) -> Unit) {
+private fun TimelineItem(item: SessionTimelineItem, highlighted: Boolean, onOpenPhoto: (BoardPhoto) -> Unit) {
     Row(Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(28.dp).fillMaxHeight()) {
-            Box(Modifier.size(12.dp).background(MaterialTheme.colorScheme.primary, CircleShape)); Spacer(Modifier.height(4.dp)); Box(Modifier.width(2.dp).weight(1f).background(MaterialTheme.colorScheme.outlineVariant))
+            Box(Modifier.size(9.dp).border(1.5.dp, if (highlighted) ClassMemoryColors.current.success else MaterialTheme.colorScheme.primary, CircleShape)); Spacer(Modifier.height(4.dp)); Box(Modifier.width(2.dp).weight(1f).background(MaterialTheme.colorScheme.outlineVariant))
         }
         Spacer(Modifier.width(8.dp))
         when (item) {
-            is SessionTimelineItem.Transcript -> TranscriptTimelineCard(item.value)
+            is SessionTimelineItem.Transcript -> TranscriptTimelineCard(item.value, highlighted)
             is SessionTimelineItem.Photo -> BoardPhotoCard(item.value) { onOpenPhoto(item.value) }
             is SessionTimelineItem.Note -> ClassroomNoteTimelineCard(item.value)
         }
@@ -390,15 +400,20 @@ private fun TimelineFilterMenuItem(
 }
 
 @Composable
-private fun TranscriptTimelineCard(segment: TranscriptSegment) = Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+private fun TranscriptTimelineCard(segment: TranscriptSegment, highlighted: Boolean) = OutlinedCard(
+    modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp), shape = RoundedCornerShape(12.dp),
+    colors = CardDefaults.outlinedCardColors(containerColor = if (highlighted) ClassMemoryColors.current.successBackground else MaterialTheme.colorScheme.surface),
+    border = BorderStroke(1.dp, if (highlighted) ClassMemoryColors.current.success.copy(alpha = .3f) else MaterialTheme.colorScheme.outlineVariant)) {
     Column(Modifier.padding(14.dp)) {
-        Text("${formatDuration(segment.startMs / 1_000)} – ${formatDuration(segment.endMs / 1_000)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(7.dp)) {
+            Text("${formatDuration(segment.startMs / 1_000)} – ${formatDuration(segment.endMs / 1_000)}", Modifier.padding(horizontal = 7.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
         Text(segment.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 7.dp))
     }
 }
 
 @Composable
-private fun ClassroomNoteTimelineCard(note: ClassroomNote) = Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+private fun ClassroomNoteTimelineCard(note: ClassroomNote) = OutlinedCard(modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, ClassMemoryColors.current.warning.copy(alpha = .25f)), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
     Column(Modifier.padding(14.dp)) {
         val kind = if (note.kind == com.classmemory.app.data.ClassroomNoteKind.QUESTION) tr("学生疑问", "Student question") else tr("学生注释", "Student comment")
         Text("${formatDuration(note.atMs / 1_000)} · $kind", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -420,13 +435,13 @@ private fun BoardPhotoCard(photo: BoardPhoto, onOpen: () -> Unit) {
     val context = LocalContext.current
     val imageResult by produceState<Result<ImageBitmap>?>(null, photo.relativePath) { value = runCatching { loadBoardPhotoImage(context, photo, 1_800) } }
     val image = imageResult?.getOrNull()
-    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(14.dp)) {
             Text(tr("${formatDuration(photo.capturedAtMs / 1_000)} · 板书照片", "${formatDuration(photo.capturedAtMs / 1_000)} · Board photo"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             when {
                 imageResult == null -> Row(Modifier.fillMaxWidth().padding(vertical = 26.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text(tr("正在加载板书照片", "Loading board photo")) }
                 image != null -> {
-                    Image(bitmap = image, contentDescription = tr("课堂板书 ${formatDuration(photo.capturedAtMs / 1_000)}，点击查看大图", "Board photo at ${formatDuration(photo.capturedAtMs / 1_000)}. Tap to view full size."), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpen))
+                    Image(bitmap = image, contentDescription = tr("课堂板书 ${formatDuration(photo.capturedAtMs / 1_000)}，点击查看大图", "Board photo at ${formatDuration(photo.capturedAtMs / 1_000)}. Tap to view full size."), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpen))
                     Text(tr("点击图片查看大图", "Tap the image to view full size"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
                 }
                 else -> PhotoUnavailableState(imageResult?.exceptionOrNull()?.message ?: tr("板书照片无法读取", "Board photo couldn't be read"), onOpen)

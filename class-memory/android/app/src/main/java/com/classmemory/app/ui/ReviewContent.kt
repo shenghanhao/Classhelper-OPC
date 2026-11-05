@@ -58,13 +58,31 @@ internal fun ReviewContent(content: String) {
 }
 
 internal fun reviewContentHtml(key: ReviewRenderKey, renderedBody: String? = null): String {
-    val foreground = if (key.dark) "#eeeeee" else "#202124"
+    val foreground = if (key.dark) "#f1effb" else "#1b1b28"
+    val accent = if (key.dark) "#bcb0ff" else "#4e36e9"
+    val tint = if (key.dark) "#302a4c" else "#eeebff"
+    val border = if (key.dark) "#454156" else "#dcdcf0"
+    val muted = if (key.dark) "#b8b4ca" else "#686a80"
     val scripts = if (renderedBody == null) "file: 'unsafe-inline'" else "'none'"
     val head = """
         <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src $scripts; style-src file: 'unsafe-inline'; font-src file:;">
         <link rel="stylesheet" href="katex.min.css">
-        <style>html,body{margin:0;padding:0}body{color:$foreground;background:transparent;font:${16f * key.fontScale}px sans-serif;line-height:1.5;overflow-wrap:anywhere}#content{display:flow-root;min-height:1px}p{margin:0 0 0.8em}pre,.katex-display{overflow-x:auto;overflow-y:hidden}table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}th,td{border:1px solid #888;padding:.4em}img{display:none}a{color:inherit;pointer-events:none}</style>
+        <style>
+        html,body{margin:0;padding:0}body{color:$foreground;background:transparent;font:${16f * key.fontScale}px sans-serif;line-height:1.75;overflow-wrap:anywhere}
+        #content{display:flow-root;min-height:1px}p{margin:0 0 .85em}#content>:last-child{margin-bottom:0}
+        h1,h2,h3,h4,h5,h6{font-weight:700;line-height:1.45;margin:1.1em 0 .55em;color:$foreground}
+        h1{font-size:1.4em}h2{font-size:1.25em}h3{font-size:1.12em}h4,h5,h6{font-size:1em}
+        h2,h3{border-left:4px solid $accent;padding-left:.6em}#content>:first-child{margin-top:0}
+        strong{font-weight:700}ul,ol{padding-left:1.55em;margin:.4em 0 1em}li{padding-left:.15em;margin:.3em 0}li::marker{color:$accent;font-weight:600}
+        blockquote{margin:.8em 0;padding:.65em .85em;border-left:3px solid $accent;background:$tint;border-radius:0 10px 10px 0}blockquote p:last-child{margin:0}
+        pre,.katex-display{overflow-x:auto;overflow-y:hidden}pre{padding:.85em;border:1px solid $border;border-radius:10px;background:$tint;line-height:1.6}
+        code{font-size:.9em;background:$tint;padding:.1em .3em;border-radius:4px}pre code{padding:0;background:transparent}
+        .katex-display{padding:.65em .5em;background:$tint;border-radius:10px;margin:.85em 0}.katex{font-size:1.08em}
+        table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;margin:.85em 0;font-size:.94em}
+        th,td{border:1px solid $border;padding:.5em .65em;min-width:3em}th{background:$tint;text-align:left;font-weight:700}tbody tr:nth-child(even){background:${if (key.dark) "#252237" else "#f6f4ff"}}
+        hr{border:0;border-top:1px solid $border;margin:1.2em 0}small{color:$muted}img{display:none}a{color:$accent;pointer-events:none}
+        </style>
     """.trimIndent()
     if (renderedBody != null) return "$head</head><body><div id=\"content\" data-review-render=\"REVIEW_RENDER_ID\">$renderedBody</div></body></html>"
     val encoded = JSONObject.quote(key.content).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")

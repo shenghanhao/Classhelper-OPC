@@ -1,7 +1,10 @@
 package com.classmemory.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,6 +17,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import com.classmemory.app.ui.icons.ClassMemoryIcons
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.classmemory.app.i18n.AppLanguage
@@ -40,10 +47,12 @@ fun ReviewScreen(
     onBack: () -> Unit,
     onSource: (ReviewSource) -> Unit,
     onSettings: () -> Unit,
+    onTranscript: () -> Unit = onBack,
 ) = ReviewRenderingScope(sessionId) {
-    ReviewScreenContent(repo, runtime, sessionId, onBack, onSource, onSettings)
+    ReviewScreenContent(repo, runtime, sessionId, onBack, onSource, onSettings, onTranscript)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReviewScreenContent(
     repo: SessionRepository,
@@ -52,6 +61,7 @@ private fun ReviewScreenContent(
     onBack: () -> Unit,
     onSource: (ReviewSource) -> Unit,
     onSettings: () -> Unit,
+    onTranscript: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -72,6 +82,10 @@ private fun ReviewScreenContent(
     var showHistory by remember { mutableStateOf(false) }
     var boardPhotos by remember { mutableStateOf<List<ReviewPhotoRef>>(emptyList()) }
     var questionPanel by remember { mutableStateOf(false) }
+    var questionTarget by remember { mutableStateOf<String?>(null) }
+    var questionThread by remember { mutableStateOf<String?>(null) }
+    var graphOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     var directoryOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
@@ -119,6 +133,12 @@ private fun ReviewScreenContent(
         scope.launch {
             reviewUnitIndex(run, id)?.let { listState.animateScrollToItem(it) }
         }
+    }
+    fun jumpToSection(key: String) {
+        scope.launch { reviewListKeys(run).indexOf(key).takeIf { it >= 0 }?.let { listState.animateScrollToItem(it) } }
+    }
+    fun askUnit(unitId: String? = null, threadId: String? = null) {
+        questionTarget = unitId; questionThread = threadId; questionPanel = true; directoryOpen = false
     }
     fun jumpToExercise(id: String? = null) {
         scope.launch { reviewExerciseIndex(run, id)?.let { listState.animateScrollToItem(it) } }
@@ -186,21 +206,41 @@ private fun ReviewScreenContent(
         val include = resume && reviewRetryIncludesPhotos(shown)
         prepareConsent(include, retry = shown.takeIf { include })
     }
-    Scaffold(containerColor = ClassMemoryColors.current.background, floatingActionButton = {
-        if (shown != null) Column(Modifier.imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            FilledTonalButton(onClick = { scope.launch { listState.animateScrollToItem(0) } },
-                modifier = Modifier.size(52.dp).semantics { contentDescription = tr("回到顶部", "Back to top") },
-                contentPadding = PaddingValues(0.dp), shape = MaterialTheme.shapes.medium) { Text("↑", style = MaterialTheme.typography.titleLarge) }
-            FilledTonalButton(onClick = { directoryOpen = !directoryOpen },
-                modifier = Modifier.size(52.dp).semantics { contentDescription = tr("打开知识目录", "Open topic index") },
-                contentPadding = PaddingValues(2.dp), shape = MaterialTheme.shapes.medium) { Text(tr("目录", "Index"), style = MaterialTheme.typography.labelMedium) }
-            FloatingActionButton(onClick = { questionPanel = true }, modifier = Modifier.size(56.dp).semantics { contentDescription = tr("课堂问答", "Class questions") }) { Text("?", style = MaterialTheme.typography.titleLarge) }
+    val palette = ClassMemoryColors.current
+    val keyboardVisible = WindowInsets.isImeVisible
+    val showFloatingActions = shown != null && !questionPanel && !graphOpen && !directoryOpen && !keyboardVisible
+    Scaffold(containerColor = palette.background, floatingActionButton = {
+        if (showFloatingActions) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReviewFloatingAction(tr("目录", "Index"), ClassMemoryIcons.File, false, { directoryOpen = true })
+                ReviewFloatingAction(tr("提问", "Ask"), ClassMemoryIcons.Question, true, { askUnit() })
+                ReviewFloatingAction(tr("顶部", "Top"), ClassMemoryIcons.ArrowUp, false, { scope.launch { listState.animateScrollToItem(0) } })
+            }
         }
     }, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text(tr("返回", "Back")) }
-            Text(tr("课堂复习", "Classroom review"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            TextButton(onClick = onSettings) { Text(tr("服务设置", "Service")) }
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(ClassMemoryIcons.Back, contentDescription = tr("返回课堂", "Back to class")) }
+            Column(Modifier.weight(1f)) {
+                Text(tr("课堂复习", "Classroom review"), style = MaterialTheme.typography.titleMedium)
+                (shown?.input?.course?.name ?: prepared?.course?.name)?.let {
+                    Text(it, color = palette.primary, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) { Icon(ClassMemoryIcons.More, contentDescription = tr("复习选项", "Review options")) }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text(tr("服务设置", "Service settings")) }, onClick = { menuOpen = false; onSettings() })
+                    if (!running && shown?.plan != null && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK && prepared?.photos?.any { it.sessionId == sessionId } == true) {
+                        DropdownMenuItem(
+                            text = { Text(tr("结合板书重新整理", "Reorganize with board photos")) },
+                            enabled = connection.isConfigured(),
+                            onClick = { menuOpen = false; openConsent() },
+                        )
+                    }
+                    if (history.isNotEmpty()) DropdownMenuItem(text = { Text(tr("旧版资料与问答", "Earlier versions and questions")) }, onClick = { menuOpen = false; showHistory = true })
+                    DropdownMenuItem(text = { Text(tr("课堂转录原文", "Class transcript")) }, onClick = { menuOpen = false; onTranscript() })
+                }
+            }
         }
     }) { padding ->
         // Do not measure a temporary empty list and clamp a restored reading position.
@@ -211,10 +251,17 @@ private fun ReviewScreenContent(
             return@Scaffold
         }
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 232.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Reserve viewport space, not just trailing content: the dock must never cover a mid-page formula or table.
+        LazyColumn(Modifier.fillMaxSize().padding(bottom = if (showFloatingActions) 84.dp else 0.dp), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item(key = "header") {
-                Text(shown?.input?.title ?: prepared?.title ?: tr("课堂复习资料", "Classroom review material"), style = MaterialTheme.typography.headlineSmall)
-                if (history.isNotEmpty()) TextButton(onClick = { showHistory = true }) { Text(tr("查看旧版复习资料与问答", "View earlier review material and questions")) }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (running) tr("整理课堂", "Organizing your class") else tr("这节课，先看全貌", "See the whole class"), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                        SketchAccent(Modifier.size(38.dp))
+                    }
+                    Text(shown?.input?.title ?: prepared?.title ?: tr("课堂复习资料", "Classroom review material"), style = MaterialTheme.typography.bodyLarge, color = palette.muted)
+                    Text(tr("课堂  ›  复习资料", "Class  ›  Review material"), color = palette.primary, style = MaterialTheme.typography.labelMedium)
+                }
                 if (stale) Text(tr("原文或课程上下文已改变，以下资料已过期。重新分析会保留旧版记录。", "Source or course context changed. Material below is outdated; analyzing again keeps the previous version."), color = MaterialTheme.colorScheme.error)
                 if (!loaded) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -222,17 +269,21 @@ private fun ReviewScreenContent(
             }
             item(key = "actions") {
                 if (running) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(progressLabel(progress[sessionId].orEmpty()))
-                    TextButton(onClick = { runtime.cancel(sessionId) }) { Text(tr("取消分析", "Cancel analysis")) }
+                    ReviewOrganizingHero(shown, progressLabel(progress[sessionId].orEmpty()), shown?.input?.title ?: prepared?.title.orEmpty(), shown?.input?.course?.name ?: prepared?.course?.name) { runtime.cancel(sessionId) }
                 } else {
-                    if (!connection.isConfigured()) Text(tr("尚未配置复习服务。可以继续阅读已保存资料，或前往服务设置。", "Review service is not configured. Saved material remains readable; configure the service to analyze."))
-                    if (shown?.plan == null || stale || shown.input.analysisVersion < 3 || shown.errors.isNotEmpty() || (!shown.notesProcessed && shown.input.notes.isNotEmpty())) Button(enabled = prepared != null && connection.isConfigured(), modifier = Modifier.fillMaxWidth(), onClick = { openConsent(resume = true) }) { Text(when { stale -> tr("预览并分析最新内容", "Preview and analyze latest content"); shown != null && shown.input.analysisVersion < 3 -> tr("按新方式重新整理", "Reorganize with the new approach"); (shown?.errors?.isNotEmpty() == true || (shown != null && !shown.notesProcessed && shown.input.notes.isNotEmpty())) -> tr("预览并重试失败部分", "Preview and retry failed stages"); else -> tr("生成完整复习题案", "Create review scheme") }) }
-                    if (shown?.plan != null && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK && prepared?.photos?.any { it.sessionId == sessionId } == true) {
-                        OutlinedButton(onClick = { openConsent() }, enabled = connection.isConfigured(), modifier = Modifier.fillMaxWidth()) {
-                            Text(tr("结合板书重新整理", "Reorganize with board photos"))
+                    if (shown == null) {
+                        ReviewPaper {
+                            NotebookIllustration(Modifier.align(Alignment.CenterHorizontally).size(100.dp))
+                            Text(tr("把这节课，整理成复习材料", "Turn this class into review material"), style = MaterialTheme.typography.titleLarge)
+                            Text(tr("结合课堂文字、随记和课程背景，形成有出处的知识讲解与复习清单。", "Use your class transcript, notes and course context to build source-linked explanations and a review checklist."), color = palette.muted)
                         }
+                        Spacer(Modifier.height(14.dp))
                     }
+                    if (!connection.isConfigured()) {
+                        Text(tr("尚未配置复习服务。已保存的资料仍可阅读。", "Review service is not configured. Saved material remains readable."), color = palette.muted, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = onSettings) { Text(tr("前往服务设置 →", "Open service settings →"), style = MaterialTheme.typography.labelMedium) }
+                    }
+                    if (shown?.plan == null || stale || shown.input.analysisVersion < 3 || shown.errors.isNotEmpty() || (!shown.notesProcessed && shown.input.notes.isNotEmpty())) Button(enabled = prepared != null && connection.isConfigured(), modifier = Modifier.fillMaxWidth(), onClick = { openConsent(resume = true) }) { Text(when { stale -> tr("预览并分析最新内容", "Preview and analyze latest content"); shown != null && shown.input.analysisVersion < 3 -> tr("按新方式重新整理", "Reorganize with the new approach"); (shown?.errors?.isNotEmpty() == true || (shown != null && !shown.notesProcessed && shown.input.notes.isNotEmpty())) -> tr("预览并重试失败部分", "Preview and retry failed stages"); else -> tr("整理这节课", "Organize this class") }) }
                 }
             }
             if (shown != null) {
@@ -244,33 +295,51 @@ private fun ReviewScreenContent(
                 }
                 shown.outline?.let { outline ->
                     item(key = "outline") {
-                        ReviewBlock(tr("全课导览", "Whole-class guide")) {
-                            Text(outline.overview)
-                            ReviewGraphSection(shown, connection, runtime, current == true, onNode = { id ->
-                                jumpToUnit(id)
-                            })
-                            orderedUnits.forEach { unit ->
-                                val first = unit.sourceIds.mapNotNull { sourcesById[it]?.takeIf { source -> source.isCurrent } }.minByOrNull { it.startMs }
-                                TextButton(onClick = { jumpToUnit(unit.id) }) {
-                                    Text(listOfNotNull(first?.let { reviewTime(it.startMs) }, unit.title).joinToString(" · "))
-                                }
+                        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                            ReviewSectionHeading(tr("全课导览", "Whole-class guide"), number = "01")
+                            Surface(color = palette.successBackground, shape = RoundedCornerShape(14.dp)) {
+                                Text(outline.overview, Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyLarge)
                             }
+                            Text(tr("本课索引", "Your class index"), style = MaterialTheme.typography.titleLarge)
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ReviewShortcut(tr("知识讲解", "Knowledge"), tr("${orderedUnits.size} 个知识块 ↓", "${orderedUnits.size} topics ↓"), ClassMemoryIcons.Notebook, Modifier.weight(1f)) { orderedUnits.firstOrNull()?.let { jumpToUnit(it.id) } }
+                                ReviewShortcut(tr("复习清单", "Checklist"), tr("${shown.completedStepIndices.size} / ${shown.plan?.steps?.size ?: 0} 已完成 ↓", "${shown.completedStepIndices.size} / ${shown.plan?.steps?.size ?: 0} complete ↓"), ClassMemoryIcons.Check, Modifier.weight(1f), tone = 1) { jumpToSection("plan") }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ReviewShortcut(tr("课后练习", "Practice"), tr("查看本课题目 ↓", "Class questions ↓"), ClassMemoryIcons.Edit, Modifier.weight(1f), tone = 2) { jumpToExercise() }
+                                ReviewShortcut(tr("思维导图", "Knowledge map"), tr("独立展开查看 ↗", "Open map ↗"), ClassMemoryIcons.Share, Modifier.weight(1f)) { graphOpen = true }
+                            }
+                            ReviewPaper {
+                                orderedUnits.take(3).forEachIndexed { index, unit ->
+                                    TextButton(onClick = { jumpToUnit(unit.id) }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
+                                        ReviewBadge("K%02d".format(index + 1))
+                                        Text(unit.title, Modifier.weight(1f).padding(horizontal = 10.dp), color = palette.text)
+                                        Text("›")
+                                    }
+                                }
+                                if (orderedUnits.size > 3) TextButton(onClick = { directoryOpen = true }) { Text(tr("查看全部 ${orderedUnits.size} 个知识块 ↓", "View all ${orderedUnits.size} topics ↓")) }
+                            }
+                            TextButton(onClick = { jumpToSection("whole-class-questions") }) { Text(tr("全课问答 ↓", "Whole-class questions ↓")) }
                         }
                     }
                 }
                 shown.plan?.let { plan ->
                     item(key = "plan") {
-                        ReviewBlock(plan.title) {
-                            Text(plan.introduction)
-                            Text(tr("建议复习日期：${plan.suggestedDate}", "Suggested review date: ${plan.suggestedDate}"))
-                            Row(Modifier.fillMaxWidth()) {
-                                Text(tr("轮次", "Round"), Modifier.weight(1f))
-                                Text(tr("复习任务", "Task"), Modifier.weight(2f))
-                                Text(tr("完成标准", "Criteria"), Modifier.weight(2f))
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ReviewSectionHeading(tr("复习清单", "Review checklist"), number = "02")
+                            Text(plan.title, style = MaterialTheme.typography.titleLarge)
+                            Text(plan.introduction, color = palette.muted)
+                            Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(14.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(tr("${shown.completedStepIndices.size} / ${plan.steps.size} 项已完成", "${shown.completedStepIndices.size} / ${plan.steps.size} tasks complete"), style = MaterialTheme.typography.titleMedium, color = palette.primary)
+                                    LinearProgressIndicator(progress = { if (plan.steps.isEmpty()) 0f else shown.completedStepIndices.size.toFloat() / plan.steps.size }, modifier = Modifier.fillMaxWidth(), color = palette.primary, trackColor = palette.border)
+                                }
                             }
+                            Text(tr("建议复习日期：${plan.suggestedDate}", "Suggested review date: ${plan.suggestedDate}"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
                             plan.steps.forEachIndexed { index, step ->
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                ReviewPaper {
+                                    ReviewBadge(tr("第 ${index + 1} 轮", "Round ${index + 1}"))
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(checked = index in shown.completedStepIndices, enabled = current == true && prepared != null && !running && !marking, onCheckedChange = { checked ->
                                             marking = true
                                             scope.launch {
@@ -280,18 +349,19 @@ private fun ReviewScreenContent(
                                                 finally { marking = false }
                                             }
                                         })
-                                        Text("${index + 1}")
+                                        Text(step.task, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                                     }
-                                    Text(step.task, Modifier.weight(2f))
-                                    Text(step.completionCriteria, Modifier.weight(2f))
+                                    Text(tr("完成标准：", "Complete when: ") + step.completionCriteria, color = palette.muted, style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
+                            Text(tr("勾选后自动保存；全部完成后资料仍会保留。", "Changes save automatically. Your material remains after every task is complete."), style = MaterialTheme.typography.bodySmall, color = palette.muted)
                         }
                     }
                 }
                 orderedUnits.forEach { unit ->
                 item(key = "unit:${unit.id}", contentType = "knowledge") {
-                    ReviewBlock(unit.title) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ReviewSectionHeading(unit.title, number = "K%02d / %02d".format(orderedUnits.indexOf(unit) + 1, orderedUnits.size))
                         if (unit.markdown.isNotBlank()) ReviewContent(unit.markdown) else {
                             ReviewContent(listOfNotNull(unit.explanation, unit.conditions.takeIf { it.isNotBlank() }, unit.classroomFocus, unit.example?.takeIf { it.isNotBlank() }).joinToString("\n\n"))
                         }
@@ -305,21 +375,36 @@ private fun ReviewScreenContent(
                         }
                         val source = unit.sourceIds.mapNotNull { sourcesById[it] }
                             .sortedWith(compareBy<ReviewSource>({ !it.isCurrent }, { it.startMs }, { it.sessionId }, { it.id })).firstOrNull()
-                        source?.let { TextButton(onClick = { onSource(it) }) { Text(tr("索引到出处", "Open source")) } }
                         val photos = unit.photoIds.mapNotNull { photosById[it] }
-                        if (photos.isNotEmpty()) TextButton(onClick = { boardPhotos = photos }) { Text(tr("查看板书", "View board")) }
-
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            source?.let { TextButton(onClick = { onSource(it) }, contentPadding = PaddingValues(0.dp)) { Text(tr("索引到出处 ↗", "Open source ↗")) } }
+                            if (photos.isNotEmpty()) TextButton(onClick = { boardPhotos = photos }, contentPadding = PaddingValues(0.dp)) { Text(tr("查看板书", "View board")) }
+                        }
+                        HorizontalDivider(color = palette.border)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr("本知识块问答", "Questions on this topic"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                            TextButton(onClick = { askUnit(unit.id) }) { Text(tr("提问 +", "Ask +")) }
+                        }
+                        if (questionsByUnit[unit.id].isNullOrEmpty()) Text(tr("有疑问，随时从这里开始。", "Start a question here whenever you need."), color = palette.muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 items(reviewQuestions(questionsByUnit[unit.id].orEmpty(), unit.id), key = { reviewQuestionKey(shown, it) }, contentType = { "question" }) { question ->
-                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn)
+                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn) {
+                        TextButton(onClick = { askUnit(unit.id, question.threadId) }) { Text(tr("追问此对话 →", "Continue this conversation →")) }
+                    }
                 }
                 }
                 item(key = "whole-class-questions") {
-                    if (!questionsByUnit[null].isNullOrEmpty()) Text(tr("全课问答", "Whole-class questions"), style = MaterialTheme.typography.titleMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ReviewSectionHeading(tr("全课问答", "Whole-class questions"), number = "04")
+                        if (questionsByUnit[null].isNullOrEmpty()) Text(tr("全课范围的问题保存在这里。", "Questions about the whole class are saved here."), color = palette.muted)
+                        TextButton(onClick = { askUnit() }) { Text(tr("向整节课提问 +", "Ask about the whole class +")) }
+                    }
                 }
                 items(reviewQuestions(questionsByUnit[null].orEmpty(), null), key = { reviewQuestionKey(shown, it) }, contentType = { "question" }) { question ->
-                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn)
+                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn) {
+                        TextButton(onClick = { askUnit(null, question.threadId) }) { Text(tr("追问此对话 →", "Continue this conversation →")) }
+                    }
                 }
                 item(key = "exercises") {
                     ReviewExerciseHeader(
@@ -342,7 +427,15 @@ private fun ReviewScreenContent(
         }
         ReviewQuickDirectory(
             units = orderedUnits,
-            maxHeight = (maxHeight * 0.55f).coerceAtMost(360.dp),
+            maxHeight = maxHeight * 0.88f,
+            title = shown?.input?.title.orEmpty(),
+            completed = shown?.completedStepIndices?.size ?: 0,
+            total = shown?.plan?.steps?.size ?: 0,
+            onGuide = { jumpToSection("outline") },
+            onPlan = if (shown?.plan != null) ({ jumpToSection("plan") }) else null,
+            onQuestions = { jumpToSection("whole-class-questions") },
+            onGraph = { graphOpen = true },
+            onTranscript = onTranscript,
             expanded = directoryOpen,
             onDismiss = { directoryOpen = false },
             onSelect = ::jumpToUnit,
@@ -350,7 +443,8 @@ private fun ReviewScreenContent(
         )
         }
     }
-    if (questionPanel && shown != null) ReviewQuestionDialog(shown, connection, runtime, current == true, onClose = { questionPanel = false })
+    if (questionPanel && shown != null) ReviewQuestionDialog(shown, connection, runtime, current == true, onClose = { questionPanel = false }, initialTarget = questionTarget, initialThread = questionThread)
+    if (graphOpen && shown != null) ReviewGraphDialog(shown, connection, runtime, current == true, onClose = { graphOpen = false }, onNode = { id -> graphOpen = false; jumpToUnit(id) })
     if (showHistory) Dialog(onDismissRequest = { showHistory = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding()) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -396,11 +490,9 @@ private fun ReviewScreenContent(
 
 @Composable
 private fun ReviewBlock(title: String, body: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            body()
-        }
+    ReviewPaper {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        body()
     }
 }
 
@@ -417,10 +509,11 @@ private fun reviewTime(ms: Long): String {
 }
 private fun progressLabel(stage: String): String = when {
     stage == "outline" -> tr("正在通读课堂并划分区间", "Reading the class and building sections")
-    stage.startsWith("unit:") -> tr("正在整理知识点 ${stage.removePrefix("unit:")}", "Preparing topic ${stage.removePrefix("unit:")}")
+    stage.startsWith("unit:") -> tr("正在整理知识讲解", "Preparing topic explanations")
     stage.startsWith("photo:") -> tr("正在分析板书", "Analyzing board photos")
-    stage == "plan" -> tr("正在合成完整复习题案", "Combining the review scheme")
-    else -> stage
+    stage == "plan" -> tr("正在生成复习清单", "Building the review checklist")
+    stage == "notes" -> tr("正在补充课堂疑问", "Adding classroom questions")
+    else -> tr("正在整理课堂", "Organizing classroom material")
 }
 
 @Composable
@@ -439,9 +532,12 @@ private fun ReviewConsent(
     val currentPhotoCount = input.photos.count { it.sessionId == input.sessionId }
     val requestedPhotoCount = if (selectedPhotos.isEmpty()) currentPhotoCount else selectedPhotos.size
     Dialog(onDismissRequest = { if (!preparing) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text(tr("确认发送的课堂资料", "Confirm classroom material to send"), style = MaterialTheme.typography.titleLarge)
+        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = ClassMemoryColors.current.background) {
+            Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("确认整理内容", "Confirm class material"), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onDismiss, enabled = !preparing) { Icon(ClassMemoryIcons.Close, tr("关闭预览", "Close preview")) }
+                }
                 Text(if (mode == ReviewConnectionMode.DIRECT_DEEPSEEK) {
                     if (!selection.includeRequested) {
                         tr("以下课堂文字、疑问与注释、课程上下文及图片时间索引将直接发送给 DeepSeek。本次保持纯文字分析。", "The classroom text, questions, notes, course context and photo time indexes will go directly to DeepSeek. This request uses text analysis.")
@@ -453,7 +549,7 @@ private fun ReviewConsent(
                 })
                 if (mode == ReviewConnectionMode.DIRECT_DEEPSEEK) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = selection.includeRequested, enabled = !preparing && (currentPhotoCount > 0 || selection.includeRequested), onCheckedChange = onIncludePhotos)
-                    Text(tr("结合本课板书分析（上传 ${requestedPhotoCount} 张）", "Include this class's board photos (upload ${requestedPhotoCount})"), Modifier.weight(1f))
+                    Text(tr("结合本课全部板书分析（上传 ${requestedPhotoCount} 张）", "Analyze all board photos from this class (upload ${requestedPhotoCount})"), Modifier.weight(1f))
                 }
                 if (preparing) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let {
@@ -463,20 +559,26 @@ private fun ReviewConsent(
                     }
                 }
                 LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
-                    item { Text("${input.title.orEmpty()}\n${tr("生成日期", "Generation date")}: ${input.today}\n${tr("语言", "Language")}: ${input.language}\n${tr("课堂标识", "Class ID")}: ${input.sessionId}\n${tr("内容指纹", "Content hash")}: ${input.sourceHash}") }
+                    item {
+                        ReviewPaper {
+                            Text(input.title.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                            Text(tr("${input.sources.size} 段文字 · ${input.notes.size} 条疑问/注释 · ${input.photos.size} 张图片索引", "${input.sources.size} text segments · ${input.notes.size} notes · ${input.photos.size} photo indexes"), color = ClassMemoryColors.current.muted)
+                            ReviewBadge(if (selection.includeRequested) tr("文字 + 所选板书", "Text + selected board photos") else tr("纯文字 · 不上传音频", "Text only · no audio upload"), ClassMemoryColors.current.successBackground, ClassMemoryColors.current.success)
+                            Text(tr("下方可逐项查看本次会发送的资料。", "Review the material that will be sent below."), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     input.course?.let { c -> item {
                         ReviewBlock(tr("课程上下文", "Course context")) {
-                            Text("${c.name}\nID: ${c.id} · ${tr("版本", "Revision")}: ${c.revision}")
+                            Text(c.name, style = MaterialTheme.typography.titleSmall)
                             Text("${tr("背景", "Background")}: ${c.background}\n${tr("目标", "Goals")}: ${c.goals}\n${tr("章节", "Chapters")}: ${c.chapters}\n${tr("术语", "Terminology")}: ${c.terminology}\n${tr("先修关系", "Prerequisites")}: ${c.prerequisites}\n${tr("来源", "Sources")}: ${c.sources}")
                         }
                     } }
                     items(input.sources, key = { "source:${it.id}" }) { s ->
                         ReviewBlock((if (s.isCurrent) tr("本课原文", "Current source") else tr("同课程历史原文", "Same-course history")) + " ${reviewTime(s.startMs)}–${reviewTime(s.endMs)}") {
-                            Text("${s.sessionId} · ${s.segmentId} · ${s.id}", style = MaterialTheme.typography.bodySmall)
                             Text(s.text)
                         }
                     }
-                    items(input.notes, key = { "note:${it.id}" }) { n -> ReviewBlock("${n.kind} ${reviewTime(n.atMs)} · ${n.id}") { Text(n.text) } }
+                    items(input.notes, key = { "note:${it.id}" }) { n -> ReviewBlock((if (n.kind == "QUESTION") tr("课堂疑问", "Class question") else tr("课堂注释", "Class note")) + " · ${reviewTime(n.atMs)}") { Text(n.text) } }
                     items(input.photos, key = { "photo:${it.id}" }) { p ->
                         val label = if (p.id in input.selectedVisionPhotoIds) tr("将上传板书", "Board photo to upload") else tr("仅图片索引", "Photo index only")
                         TextButton(onClick = { onPreviewPhotos(listOf(p)) }) {
@@ -489,6 +591,21 @@ private fun ReviewConsent(
                     Button(onClick = onConfirm, enabled = selection.canConfirm(input), modifier = Modifier.weight(1f)) { Text(tr("同意并开始", "Agree and start")) }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun ReviewFloatingAction(label: String, icon: ImageVector, emphasized: Boolean, onClick: () -> Unit) {
+    val p = ClassMemoryColors.current
+    Surface(onClick = onClick, modifier = Modifier.widthIn(min = 60.dp).heightIn(min = 60.dp),
+        color = if (emphasized) p.primary else p.surface,
+        contentColor = if (emphasized) p.onPrimary else p.primary,
+        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, p.primary), shadowElevation = 5.dp) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
         }
     }
 }

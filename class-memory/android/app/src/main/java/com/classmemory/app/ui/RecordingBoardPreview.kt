@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -36,6 +38,8 @@ import com.classmemory.app.data.BoardPhoto
 import com.classmemory.app.repository.BoardPhotoDeletionResult
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.repository.isSafeBoardPhotoPath
+import com.classmemory.app.ui.icons.ClassMemoryIcons
+import com.classmemory.app.ui.theme.ClassMemoryColors
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -61,8 +65,10 @@ internal fun RecordingBoardPreview(
             selectedPhoto = null
         }
     }
-    val handleColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth()) {
+    val palette = ClassMemoryColors.current
+    val handleColor = palette.muted
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 8.dp, bottomEnd = 8.dp), color = palette.surface, border = BorderStroke(1.dp, palette.border)) {
+      Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         Box(Modifier.fillMaxWidth().heightIn(min = 24.dp).pointerInput(expanded) {
             var drag = 0f
             detectVerticalDragGestures(
@@ -87,18 +93,23 @@ internal fun RecordingBoardPreview(
                     drawLine(handleColor, androidx.compose.ui.geometry.Offset(0f, centerY), androidx.compose.ui.geometry.Offset(size.width / 2f, size.height - centerY), stroke)
                     drawLine(handleColor, androidx.compose.ui.geometry.Offset(size.width / 2f, size.height - centerY), androidx.compose.ui.geometry.Offset(size.width, centerY), stroke)
                 }
-                Surface(Modifier.width(42.dp).height(4.dp), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outlineVariant) {}
+                Surface(Modifier.width(38.dp).height(3.dp), shape = RoundedCornerShape(50), color = palette.border) {}
+            }
+            if (!expanded) {
+                Icon(ClassMemoryIcons.Photo, null, Modifier.align(Alignment.CenterStart).size(16.dp), tint = palette.primary)
+                Text(tr("${visiblePhotos.size} 张", "${visiblePhotos.size} photos"), Modifier.align(Alignment.CenterEnd), style = MaterialTheme.typography.labelSmall, color = palette.muted)
             }
         }
         AnimatedVisibility(expanded) {
             Column(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Text(tr("板书预览", "Board photo preview"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().heightIn(min = 27.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(ClassMemoryIcons.Photo, null, Modifier.size(18.dp), tint = palette.primary)
+                    Text(tr("板书预览 · ${visiblePhotos.size} 张", "Board photos · ${visiblePhotos.size}"), style = MaterialTheme.typography.labelMedium, color = palette.text)
                 }
                 if (visiblePhotos.isEmpty()) {
-                    Text(tr("还没有保存的板书照片", "No saved board photos yet"), Modifier.fillMaxWidth().height(66.dp).wrapContentHeight(Alignment.CenterVertically), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("还没有板书，点击下方拍摄", "No photos yet. Use the camera below."), Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(vertical = 10.dp).wrapContentHeight(Alignment.CenterVertically), style = MaterialTheme.typography.bodySmall, color = palette.muted)
                 } else {
-                    LazyRow(Modifier.fillMaxWidth().heightIn(max = 124.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                    LazyRow(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
                         items(visiblePhotos, key = { it.id }) { photo ->
                             BoardPhotoThumbnail(photo, onClick = { selectedId = photo.id; selectedPhoto = photo })
                         }
@@ -106,6 +117,7 @@ internal fun RecordingBoardPreview(
                 }
             }
         }
+      }
     }
     val selected = selectedPhoto?.takeIf { it.id == selectedId && it.sessionId == sessionId }
         ?: selectedId?.let { id -> visiblePhotos.firstOrNull { it.id == id } }
@@ -140,11 +152,11 @@ private fun BoardPhotoThumbnail(photo: BoardPhoto, onClick: () -> Unit) {
     }
     val (loaded, bitmap) = result
     Column(Modifier.width(edge.dp).clickable(onClick = onClick).semantics { contentDescription = tr("板书照片，${formatBoardPhotoTime(photo.capturedAtMs)}", "Board photo, ${formatBoardPhotoTime(photo.capturedAtMs)}") }, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(edge.dp).clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(edge.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             if (bitmap != null) androidx.compose.foundation.Image(bitmap!!.asImageBitmap(), tr("板书照片 ${formatBoardPhotoTime(photo.capturedAtMs)}", "Board photo ${formatBoardPhotoTime(photo.capturedAtMs)}"), Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             else Text(if (loaded) tr("照片不可用", "Photo unavailable") else tr("加载中…", "Loading…"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
-        Text(formatBoardPhotoTime(photo.capturedAtMs), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(formatBoardPhotoTime(photo.capturedAtMs), Modifier.padding(top = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -184,7 +196,7 @@ internal fun BoardPhotoViewer(
     }
     LaunchedEffect(viewWidth, viewHeight, bitmap) { update(scale, offsetX, offsetY) }
     Dialog(onDismissRequest = { if (!deleting && !deleteInFlight) onClose() }, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = !busy, dismissOnClickOutside = !busy)) {
-        Surface(Modifier.fillMaxWidth().fillMaxHeight(0.86f).padding(16.dp), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+        Surface(Modifier.fillMaxWidth().fillMaxHeight(0.86f).padding(16.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             Column(Modifier.fillMaxSize().padding(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(formatBoardPhotoTime(photo.capturedAtMs), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
