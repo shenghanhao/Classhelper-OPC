@@ -11,7 +11,7 @@ import java.util.UUID
 
 /** Process-owned jobs survive navigation. Durable checkpoints allow explicit retry after process death. */
 class ReviewRuntime private constructor(val store: ReviewStore, private val repo: SessionRepository?, private val matches: suspend (ReviewRun) -> Boolean, private val gatewayFactory: (ReviewConnection) -> ReviewGateway) {
-    constructor(store: ReviewStore, repo: SessionRepository) : this(store, repo, { repo.reviewMatchesCurrent(it) }, { ReviewHttpGateway(it.baseUrl, it.accessToken) })
+    constructor(store: ReviewStore, repo: SessionRepository) : this(store, repo, { repo.reviewMatchesCurrent(it) }, { when (it.mode) { ReviewConnectionMode.DIRECT_DEEPSEEK -> DirectDeepSeekGateway(it.apiKey, it.model); ReviewConnectionMode.PROXY -> ReviewHttpGateway(it.baseUrl, it.accessToken) } })
     internal constructor(store: ReviewStore, matches: suspend (ReviewRun) -> Boolean, gatewayFactory: (ReviewConnection) -> ReviewGateway) : this(store, null, matches, gatewayFactory)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val jobs = mutableMapOf<String, Job>()

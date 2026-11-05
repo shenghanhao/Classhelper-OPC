@@ -224,7 +224,7 @@ fun ReviewScreen(
         }, confirmButton = { TextButton(onClick = { boardPhotos = emptyList() }) { Text(tr("关闭", "Close")) } })
     }
     consent?.let { input ->
-        ReviewConsent(input, onDismiss = { consent = null }, onConfirm = {
+        ReviewConsent(input, connection.mode, onDismiss = { consent = null }, onConfirm = {
             runtime.start(input, ReviewConnectionPreferences.load(context))
             consent = null
         })
@@ -260,12 +260,16 @@ private fun progressLabel(stage: String): String = when {
 }
 
 @Composable
-private fun ReviewConsent(input: ReviewInput, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun ReviewConsent(input: ReviewInput, mode: ReviewConnectionMode, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding()) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Text(tr("确认发送的课堂资料", "Confirm classroom material to send"), style = MaterialTheme.typography.titleLarge)
-                Text(tr("以下课堂文字、疑问与注释以及图片时间索引将发送到你配置的代理及其模型供应商。不会发送音频、图片像素或图片路径。", "The classroom text, questions, notes and photo time indexes below will be sent to your configured proxy and its model provider. Audio, image pixels and image paths are not sent."))
+                Text(if (mode == ReviewConnectionMode.DIRECT_DEEPSEEK) {
+                    tr("以下课堂文字、疑问与注释、课程上下文以及图片时间索引将由手机直接发送给 DeepSeek。音频和板书图片保留在本地。", "This phone will send the classroom text, questions, notes, course context and photo time indexes below directly to DeepSeek. Audio and board photos stay on the device.")
+                } else {
+                    tr("以下课堂文字、疑问与注释、课程上下文以及图片时间索引将发送到你配置的代理及其模型供应商。音频和板书图片保留在本地。", "The classroom text, questions, notes, course context and photo time indexes below will be sent to your configured proxy and its model provider. Audio and board photos stay on the device.")
+                })
                 LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                     item { Text("${input.title.orEmpty()}\n${tr("生成日期", "Generation date")}: ${input.today}\n${tr("语言", "Language")}: ${input.language}\n${tr("课堂标识", "Class ID")}: ${input.sessionId}\n${tr("内容指纹", "Content hash")}: ${input.sourceHash}") }
                     input.course?.let { c -> item {

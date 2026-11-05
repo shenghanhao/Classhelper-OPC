@@ -8,11 +8,11 @@ The OPC build channel exists. From `class-memory/android`, with the model assets
 
 Output: `app/build/outputs/apk/opc/app-opc.apk`.
 Application ID: `com.classmemory.app.publish.opc2026`.
-Version: `0.3.1-opc.3` / versionCode `10003`. The Debug channel is `com.classmemory.app.publish`, version `0.3.1`, versionCode `3`.
+Current source version: `0.3.3-opc.5` / versionCode `10005`. The Debug channel is `com.classmemory.app.publish`, version `0.3.3`, versionCode `5`. GitHub Release is still v0.3.1; consult CURRENT.md for local build evidence.
 Platform: Android 10+ on arm64.
 
 This channel currently uses the local Android debug signing certificate and inherits release runtime settings. It is a **debug-signed development preview**, not the `debug` Gradle build type or a production release. Both packages offer **⋯ → Import class recording**, which transcribes an existing audio file and saves the resulting class in History. A stable private signing key and increasing version codes are required for future production distribution. Never commit signing keys or passwords.
 
-The release includes SHA-256 checksums for both APKs. Open Settings → Study service to connect your own HTTPS proxy. Keep the provider key in that server's environment. See [CURRENT.md](../CURRENT.md) for the build inputs and validation evidence.
+GitHub v0.3.1 includes the OPC APK and its SHA-256 checksum; uploading its Debug APK remains pending. In the current source, open Review service settings → Connect to DeepSeek on this phone to enter a personal API key, encrypted locally with Android Keystore. The self-hosted service option still keeps provider credentials on your server. Do not embed personal keys in APKs or source code. See [CURRENT.md](../CURRENT.md) for build inputs and validation evidence.
 
 中文：OPC 构建渠道已实现，当前使用 Debug 证书签名，运行配置继承 release；因此是测试签名预览包，不等同于 Gradle 的 debug 版本。公开版与 OPC 的应用 ID 不同。正式发行前仍需固定专用签名和并存、覆盖升级验收。Release 应如实记录实际构建和验证结果。

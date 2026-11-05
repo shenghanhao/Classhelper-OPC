@@ -90,8 +90,8 @@ android {
         applicationId = "com.classmemory.app.publish"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.3.2"
+        versionCode = 5
+        versionName = "0.3.3"
         buildConfigField("String", "ASR_MODEL_ID", "\"$asrModel\"")
         buildConfigField("String", "ASR_MODEL_DIR", "\"$asrModelDirectory\"")
         buildConfigField("String", "ASR_MODEL_LABEL", "\"$displayModelLabel\"")
@@ -110,7 +110,7 @@ android {
         create("opc") {
             initWith(getByName("release"))
             applicationIdSuffix = ".opc2026"
-            versionNameSuffix = "-opc.4"
+            versionNameSuffix = "-opc.5"
             buildConfigField("String", "STUDY_AGENT_URL", "\"$studyAgentUrl\"")
             isDebuggable = opcDeviceTest
             resValue("string", "app_name", if (opcDeviceTest) "ClassMemory OPC 设备测试" else "ClassMemory AI · OPC")
@@ -135,8 +135,8 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("opc")) { variant ->
         variant.outputs.forEach { output ->
-            output.versionCode.set(10004)
-            output.versionName.set("0.3.2-opc.4")
+            output.versionCode.set(10005)
+            output.versionName.set("0.3.3-opc.5")
         }
     }
 }

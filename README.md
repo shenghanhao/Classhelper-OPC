@@ -10,9 +10,9 @@
 
 **Dot / 开发接手** · 在本发布分支从 [CURRENT.md](CURRENT.md) 开始。For the implementation status, test evidence, and first development steps, read [CURRENT.md](CURRENT.md).
 
-课后复盘：在设置里配置自己的 HTTPS 复习服务。结束课堂后，进入详情页生成复习资料。点击知识节点阅读讲解，在复习表上逐轮打勾。右下角问号可针对全课或某个知识点提问、追问。知识结构图使用模型返回的节点和关系在手机上绘制。发送前可查看材料范围，服务端持有供应商密钥。服务启动说明见 [study-agent-server](class-memory/study-agent-server/README.md)。
+课后复盘：当前源码支持在「复习服务设置 → 手机直连 DeepSeek」填写自己的 API Key，不需要电脑或自建服务。密钥使用 Android Keystore 加密保存，调用费用由自己的 DeepSeek 账户承担；可选模型为 deepseek-flash 和 deepseek-v4-pro。结束课堂后进入详情页生成复习资料，在复习表逐轮打勾，右下角问号可针对全课或某个知识点提问，知识结构图在手机上绘制。发送前可预览课堂文字、课程上下文和标注，音频与板书图片不会上传。失败后仅重试缺失部分。仍可选择自建 HTTPS 服务，见 [服务说明](class-memory/study-agent-server/README.md)。直连功能目前为本地 v0.3.3 开发版本，以上 GitHub 下载仍为 v0.3.1。
 
-For after-class review, configure your own HTTPS study service in Settings, then open a finished class. Generate its review, explore topic explanations, check off review rounds, and use the question button for a classroom or topic discussion. The phone draws the knowledge map from structured model output. Classroom audio and board photos stay local. The study service receives the consented text and photo time indexes. [Server setup](class-memory/study-agent-server/README.md)
+For after-class review, the current source supports **Review service settings → Connect to DeepSeek on this phone**. Enter your own API key; no computer or personal server is required. Android Keystore protects the saved key, and requests are billed to your DeepSeek account. Choose deepseek-flash or deepseek-v4-pro. Open a finished class to generate explanations, check off review rounds, ask classroom/topic questions and view a knowledge map. Preview the text, course context and notes before sending; audio and board images are not uploaded. Retry resumes missing stages. A [self-hosted HTTPS service](class-memory/study-agent-server/README.md) remains optional. Direct access is in the local v0.3.3 development build; the GitHub download above is still v0.3.1.
 
 ## English — how to use
 

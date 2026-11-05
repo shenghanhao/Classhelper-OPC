@@ -19,6 +19,18 @@
 | 课程上下文、模型和构建准备 | [课程上下文](docs/COURSE_CONTEXT.md)、[ASR 权重](docs/MODELS.md)、[Android 安装包](docs/OPC_APK_DELIVERY.md) |
 | 自建复盘服务 | [服务配置和 V3 请求协议](class-memory/study-agent-server/README.md) |
 
+## v0.3.3 手机直连 DeepSeek（本地安装）
+
+用户选择自行填写 API Key，替代已经停止的电脑临时代理。设置 → 复习服务连接 → 手机直连 DeepSeek，输入个人密钥并保存；默认 deepseek-flash，也支持 deepseek-v4-pro。密钥通过 Android Keystore 的 AES-GCM 密钥加密后存储，不进入课堂记录、导出、错误提示或源码；设置页禁止截图。清除密钥不删除课堂资料。旧 localhost 配置默认切换到直连，旧远程代理保留，代理 token 不会成为供应商 API Key。
+
+`DirectDeepSeekGateway.kt` 和 `ReviewRuntime.kt` 接通导览、知识单元、课堂标注、复习计划、问答和知识图。完整课堂输入不截断，请求不设应用侧 max_tokens；供应商容量限制仍适用。长课导览使用连续索引区间，严格验证后还原原文 ID，拒绝漏段、重叠和越界。失败重试沿用本地已保存阶段。无效/截断响应不作为成功结果保存；请求可取消，密钥不随重定向发送。
+
+连接与存储入口：`review/ReviewConnection.kt`、`ReviewCredentialCipher.kt`；设置与发送预览：`ui/ReviewConnectionSettings.kt`、`ReviewScreen.kt`。标准 HTTPS 证书验证保持不变，未引入测试 CA。调用协议参考 [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)。
+
+验收：DirectDeepSeekGatewayTest 7 项、ReviewConnectionTest 4 项、ReviewPipelineTest 13 项、ReviewQaGraphTest 6 项，共 30 项一次通过；assembleOpc 成功。`0.3.3-opc.5 / 10005` 已覆盖安装，证书与上一版一致。真机用非真实占位密钥验证保存、冷启动解密和清除，全部通过，测试值已清除。未发送真实模型请求；用户选择自行填写密钥并测试，真实整理质量和线上连通性未宣称验收。未发布新 GitHub Release，公开下载仍为 v0.3.1。
+
+回退分支：`codex/checkpoint-before-direct-deepseek`，指向 `6247c1d`。本次 APK SHA-256：`04fa831efe23cf2e21b210c03bb83795532fca0d9d3ade63c34aa5bcc78cd78c`。
+
 ## v0.3.2 本地真机修复
 
 语言切换问题已在 Android 真机复现。v0.3.1 点击英文菜单中的「切换 中文」会因 `ChildSemanticsNode.applySemantics` 抛出 `visitAncestors called on an unattached node` 而退出。
@@ -95,4 +107,4 @@ node --test test/review-v3-extra.test.mjs test/review-v3-notes-validation.test.m
 ./gradlew :app:assembleDebug :app:assembleOpc -PasrModel=xasr -PasrComparison=true -PasrHotwordProfile=none
 ```
 
-**下一步验收。** 在测试手机安装独立 OPC 包，设置里连接自建的 HTTPS 复盘服务。使用自编课堂，记录一个疑问和一条补充注释。生成复盘后核对单元讲解，再依次验证点图跳转、追问、关闭页面后重开查看。真实模型的回答质量和真机操作体验待这一轮验证。模型密钥仅配置到服务端环境变量。
+**后续线上验收（用户自行进行）。** 手机已安装独立 OPC 0.3.3。在复习服务设置填写个人 DeepSeek API Key，保存后回到失败的课堂，预览并重试失败部分。核对单元讲解，再验证点图跳转、追问和重开查看。用户若选择自建代理模式，供应商密钥仍仅放在自己的服务端环境变量。
