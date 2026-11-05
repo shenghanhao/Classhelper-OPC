@@ -26,6 +26,28 @@ val displayModelLabel = when (asrHotwordProfile) {
     else -> asrModelLabel
 }
 val asrAppLabel = "Class Memory"
+val opcDeviceTest = providers.gradleProperty("opcDeviceTest").getOrElse("false").toBooleanStrict()
+val opcDeviceResources = layout.buildDirectory.dir("generated/opc-device-res")
+val stageOpcDeviceResources by tasks.registering {
+    val ca = providers.gradleProperty("opcDeviceCaFile")
+    if (opcDeviceTest) inputs.file(ca.map { file(it) })
+    outputs.dir(opcDeviceResources)
+    doLast {
+        val certificate = file(ca.get())
+        check(certificate.isFile) { "opcDeviceCaFile must point to a public CA certificate" }
+        val root = opcDeviceResources.get().asFile
+        val raw = root.resolve("raw").apply { mkdirs() }
+        certificate.copyTo(raw.resolve("opc_device_ca.pem"), overwrite = true)
+        root.resolve("xml").apply { mkdirs() }.resolve("opc_device_network.xml").writeText("""
+            <network-security-config>
+              <domain-config cleartextTrafficPermitted="false">
+                <domain>localhost</domain><domain>127.0.0.1</domain>
+                <trust-anchors><certificates src="system"/><certificates src="@raw/opc_device_ca"/></trust-anchors>
+              </domain-config>
+            </network-security-config>
+        """.trimIndent())
+    }
+}
 // OPC study analysis talks to a small HTTPS proxy; the proxy holds the model provider key.
 // Empty in the public build, so the feature stays disabled unless explicitly configured.
 val studyAgentUrl = providers.gradleProperty("studyAgentUrl").getOrElse("")
@@ -39,7 +61,7 @@ val requiredModelFiles = when (asrModel) {
 val stagedAssets = layout.buildDirectory.dir("generated/asr-assets/$asrModel")
 val stageAsrAssets by tasks.registering(Sync::class) {
     from("src/main/assets") {
-        include("licenses/**")
+        include("licenses/**", "review-katex/**")
     }
     from(modelAssetRoot) {
         include("$asrModelDirectory/**")
@@ -68,8 +90,8 @@ android {
         applicationId = "com.classmemory.app.publish"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.3.0"
         buildConfigField("String", "ASR_MODEL_ID", "\"$asrModel\"")
         buildConfigField("String", "ASR_MODEL_DIR", "\"$asrModelDirectory\"")
         buildConfigField("String", "ASR_MODEL_LABEL", "\"$displayModelLabel\"")
@@ -88,15 +110,20 @@ android {
         create("opc") {
             initWith(getByName("release"))
             applicationIdSuffix = ".opc2026"
-            versionNameSuffix = "-opc.1"
+            versionNameSuffix = "-opc.2"
             buildConfigField("String", "STUDY_AGENT_URL", "\"$studyAgentUrl\"")
-            resValue("string", "app_name", "ClassMemory AI · OPC")
+            isDebuggable = opcDeviceTest
+            resValue("string", "app_name", if (opcDeviceTest) "ClassMemory OPC 设备测试" else "ClassMemory AI · OPC")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     sourceSets.getByName("main").assets.setSrcDirs(listOf(stagedAssets))
+    if (opcDeviceTest) {
+        sourceSets.getByName("opc").res.srcDir(opcDeviceResources.get().asFile)
+        sourceSets.getByName("opc").manifest.srcFile("src/opc/device-test/AndroidManifest.xml")
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_11; targetCompatibility = JavaVersion.VERSION_11 }
     kotlin {
         compilerOptions {
@@ -108,13 +135,14 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("opc")) { variant ->
         variant.outputs.forEach { output ->
-            output.versionCode.set(10001)
-            output.versionName.set("0.2.0-opc.1")
+            output.versionCode.set(10002)
+            output.versionName.set("0.3.0-opc.2")
         }
     }
 }
 
 tasks.named("preBuild") { dependsOn(stageAsrAssets) }
+if (opcDeviceTest) tasks.named("preBuild") { dependsOn(stageOpcDeviceResources) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.02.01")

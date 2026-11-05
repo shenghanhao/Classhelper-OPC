@@ -1,10 +1,16 @@
 # Class Memory / 课堂记忆
 
-> **OPC development preview / OPC 开发预览**: [Current capabilities and contribution workflow](docs/OPC_STATUS.md). AI backend modules are present, but the AI UI, course context and review plans are not implemented. See each Release for the exact Debug/OPC package identity and limitations. / 当前仅增加 AI 底层模块，界面与复习工作流尚未完成；安装包类型和限制请看 Release。
-
 **Language / 语言切换:** Home **⋯** → **Switch to English** in Chinese, or **切换 中文** in English. The choice is saved; the public build starts in English. UI language does not change the ASR model or translate recordings.
 
 首页 **⋯**：中文界面选 **Switch to English**，英文界面选 **切换 中文**。选择会保存，公开版首次默认英文；切换界面语言不会更换识别模型或翻译老师的话。
+
+**下载 / Download** · [OPC 测试安装包 / OPC APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/ClassMemory-OPC.apk) · [Debug APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/ClassMemory-Debug.apk) · [SHA-256](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/SHA256SUMS.txt)
+
+**Dot / 开发接手** · 在本发布分支从 [CURRENT.md](CURRENT.md) 开始。For the implementation status, test evidence, and first development steps, read [CURRENT.md](CURRENT.md).
+
+课后复盘：在设置里配置自己的 HTTPS 复习服务。结束课堂后，进入详情页生成复习资料。点击知识节点阅读讲解，在复习表上逐轮打勾。右下角问号可针对全课或某个知识点提问、追问。知识结构图使用模型返回的节点和关系在手机上绘制。发送前可查看材料范围，服务端持有供应商密钥。服务启动说明见 [study-agent-server](class-memory/study-agent-server/README.md)。
+
+For after-class review, configure your own HTTPS study service in Settings, then open a finished class. Generate its review, explore topic explanations, check off review rounds, and use the question button for a classroom or topic discussion. The phone draws the knowledge map from structured model output. Classroom audio and board photos stay local. The study service receives the consented text and photo time indexes. [Server setup](class-memory/study-agent-server/README.md)
 
 ## English — how to use
 

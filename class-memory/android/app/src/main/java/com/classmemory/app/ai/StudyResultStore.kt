@@ -93,7 +93,7 @@ data class StudyRecord(
         if (input.segmentCount < 0 || input.noteCount < 0 || input.charCount < 0) {
             throw StudyContractException(StudyErrorCode.INVALID_RECORD, "Invalid input statistics")
         }
-        if (summary.isBlank() || summary.length > STUDY_MAX_SUMMARY_CHARS) {
+        if (summary.isBlank()) {
             throw StudyContractException(StudyErrorCode.INVALID_SUMMARY, "Invalid stored summary")
         }
         if (model != null && (model.isBlank() || model.length > 120)) {

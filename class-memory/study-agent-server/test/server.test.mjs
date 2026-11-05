@@ -97,8 +97,50 @@ test("returns a source-bound, evidence-checked analysis", async () => {
     assert.equal(body.summary, "本节课比较了栈与队列。");
     assert.equal(body.knowledgePoints[0].evidence[0].segmentId, "seg-1");
     assert.equal(providerPayload.model, "test-model");
+    assert.equal(Object.hasOwn(providerPayload, "max_tokens"), false);
     assert.match(providerPayload.messages[0].content, /逐字/);
     assert.match(providerPayload.messages[1].content, /栈是后进先出/);
+  });
+});
+
+test("preserves large input and output without character, byte or item caps", async () => {
+  const quote = "完整课堂原文".repeat(1000);
+  const request = requestBody({
+    title: "课程".repeat(150),
+    courseType: "名称".repeat(100),
+    segments: Array.from({ length: 401 }, (_, i) => ({ id: `seg-${i}`, startMs: i, endMs: i + 1, text: quote })),
+    notes: Array.from({ length: 101 }, (_, i) => ({ id: `note-${i}`, atMs: i, kind: "COMMENT", text: "注释".repeat(1100) })),
+  });
+  const result = analysis({
+    summary: "总结".repeat(150_000),
+    knowledgePoints: Array.from({ length: 13 }, (_, i) => ({
+      id: `kp-${i}`, title: "标题".repeat(100), explanation: "解释".repeat(1000),
+      evidence: Array.from({ length: 6 }, (_, j) => ({ segmentId: `seg-${j}`, quote })),
+    })),
+  });
+  await withServer(baseConfig(), async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    const passed = JSON.parse(payload.messages[1].content);
+    assert.deepEqual(passed.segments, request.segments);
+    assert.deepEqual(passed.notes, request.notes);
+    assert.equal(Object.hasOwn(payload, "max_tokens"), false);
+    return providerResponse(JSON.stringify(result));
+  }, async (base) => {
+    const response = await post(base, request);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.summary, result.summary);
+    assert.deepEqual(body.knowledgePoints, result.knowledgePoints);
+  });
+});
+
+test("rejects provider-truncated output even if the partial content is valid JSON", async () => {
+  await withServer(baseConfig(), async () => new Response(JSON.stringify({
+    choices: [{ finish_reason: "length", message: { content: JSON.stringify(analysis()) } }],
+  }), { status: 200 }), async (base) => {
+    const response = await post(base, requestBody());
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error.code, "PROVIDER_INCOMPLETE");
   });
 });
 

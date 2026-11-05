@@ -13,11 +13,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.core.content.ContextCompat
 import com.classmemory.app.service.RecordingService
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.ui.*
 import com.classmemory.app.ui.theme.ClassMemoryTheme
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,6 +27,7 @@ class MainActivity : ComponentActivity() {
         setContent {
           ClassMemoryTheme {
             var page by rememberSaveable(stateSaver = screenSaver) { mutableStateOf<Screen>(Screen.Home) }
+            val reviewStateHolder = rememberSaveableStateHolder()
             var openHotwordManager by rememberSaveable { mutableStateOf(false) }
             var permissionMessage by remember { mutableStateOf<String?>(null) }
             var startupError by remember { mutableStateOf<String?>(null) }
@@ -48,7 +51,10 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(startupError) {
                 startupError?.let { Toast.makeText(this@MainActivity, it, Toast.LENGTH_LONG).show() }
             }
-            BackHandler(enabled = page is Screen.Detail || page is Screen.Settings) { page = Screen.Home }
+            BackHandler(enabled = page is Screen.Detail || page is Screen.Settings) {
+                val detail = page as? Screen.Detail
+                page = detail?.returnReviewId?.let { Screen.Review(it) } ?: Screen.Home
+            }
             when (val current = page) {
                 Screen.Home -> HomeScreen(
                     repo = (application as ClassMemoryApp).repository,
@@ -70,10 +76,12 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this, tr("当前安装包不支持导入音频", "Audio import is not supported in this build"), Toast.LENGTH_LONG).show()
                         }
                     },
-                    showImport = BuildConfig.DEBUG,
+                    showImport = BuildConfig.BUILD_TYPE == "debug",
                     onDetail = { page = Screen.Detail(it) },
                     onSettings = { page = Screen.Settings },
                     onManageHotwords = { openHotwordManager = true; page = Screen.Settings },
+                    reviewRuntime = (application as ClassMemoryApp).reviewRuntime,
+                    onReview = { page = Screen.Review(it) },
                 )
                 Screen.Recording -> RecordingScreen(
                     repo = (application as ClassMemoryApp).repository,
@@ -83,12 +91,31 @@ class MainActivity : ComponentActivity() {
                         (application as ClassMemoryApp).repository.addBoardPhoto(sessionId, capturedAtMs, relativePath)
                     },
                 )
-                is Screen.Detail -> SessionDetailScreen((application as ClassMemoryApp).repository, current.id) { page = Screen.Home }
+                is Screen.Detail -> SessionDetailScreen(
+                    (application as ClassMemoryApp).repository, current.id,
+                    onReview = { page = Screen.Review(current.id) },
+                    initialTimelineKey = current.timelineKey, initialPhotoId = current.photoId,
+                    onBack = { page = current.returnReviewId?.let { Screen.Review(it) } ?: Screen.Home },
+                )
+                is Screen.Review -> reviewStateHolder.SaveableStateProvider(current.id) { ReviewScreen(
+                    repo = (application as ClassMemoryApp).repository,
+                    runtime = (application as ClassMemoryApp).reviewRuntime,
+                    sessionId = current.id,
+                    onBack = { page = Screen.Detail(current.id) },
+                    onSource = { source -> page = Screen.Detail(source.sessionId, "transcript:${source.segmentId}", returnReviewId = current.id) },
+                    onPhoto = { photo -> page = Screen.Detail(photo.sessionId, "photo:${photo.id}", photo.id, current.id) },
+                    onSettings = { page = Screen.ReviewSettings(current.id) },
+                ) }
+                is Screen.ReviewSettings -> ReviewConnectionSettings(onBack = {
+                    page = current.returnReviewId?.let { Screen.Review(it) } ?: Screen.Settings
+                })
                 Screen.Settings -> SettingsScreen(
                     (application as ClassMemoryApp).repository,
                     onBack = { page = Screen.Home },
                     openHotwordManager = openHotwordManager,
                     onHotwordManagerOpened = { openHotwordManager = false },
+                    onOpenClass = { page = Screen.Detail(it) },
+                    onReviewSettings = { page = Screen.ReviewSettings(null) },
                 )
             }
           }
@@ -100,7 +127,9 @@ sealed interface Screen {
     data object Home : Screen
     data object Recording : Screen
     data object Settings : Screen
-    data class Detail(val id: String) : Screen
+    data class Detail(val id: String, val timelineKey: String? = null, val photoId: String? = null, val returnReviewId: String? = null) : Screen
+    data class Review(val id: String) : Screen
+    data class ReviewSettings(val returnReviewId: String?) : Screen
 }
 
 private val screenSaver = Saver<Screen, String>(
@@ -108,13 +137,21 @@ private val screenSaver = Saver<Screen, String>(
         Screen.Home -> "home"
         Screen.Recording -> "home"
         Screen.Settings -> "settings"
-        is Screen.Detail -> "detail:${screen.id}"
+        is Screen.Detail -> "detail2:" + JSONObject().put("id", screen.id).put("key", screen.timelineKey).put("photo", screen.photoId).put("review", screen.returnReviewId).toString()
+        is Screen.Review -> "review:${screen.id}"
+        is Screen.ReviewSettings -> "reviewsettings:${screen.returnReviewId.orEmpty()}"
     } },
     restore = { route -> when {
         route == "home" -> Screen.Home
         route == "recording" -> Screen.Home
         route == "settings" -> Screen.Settings
         route.startsWith("detail:") -> Screen.Detail(route.removePrefix("detail:"))
+        route.startsWith("detail2:") -> runCatching {
+            val obj = JSONObject(route.removePrefix("detail2:"))
+            Screen.Detail(obj.getString("id"), obj.optString("key").ifBlank { null }, obj.optString("photo").ifBlank { null }, obj.optString("review").ifBlank { null })
+        }.getOrDefault(Screen.Home)
+        route.startsWith("review:") -> Screen.Review(route.removePrefix("review:"))
+        route.startsWith("reviewsettings:") -> Screen.ReviewSettings(route.removePrefix("reviewsettings:").ifBlank { null })
         else -> Screen.Home
     } },
 )

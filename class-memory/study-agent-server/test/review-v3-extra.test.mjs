@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {runReviewStage} from '../review-v3.mjs';
+const input={schemaVersion:3,sessionId:'c',sourceHash:'a'.repeat(64),language:'zh',today:'2026-11-05',sources:[{id:'s',sessionId:'c',segmentId:'s',startMs:0,endMs:10,text:'完整原文',isCurrent:true}],photos:[],notes:[{id:'n',atMs:1,kind:'QUESTION',text:'为何'}]};
+const outline={overview:'概览',sections:[{id:'sec',title:'节',sourceIds:['s']}],topics:[{id:'u',title:'标题',sectionIds:['sec'],sourceIds:['s']}]};
+const units=[{id:'u',title:'标题',markdown:'完整正文',explanation:'解释',conditions:'',classroomFocus:'重点',example:null,sourceIds:['s'],photoIds:[],sectionIds:['sec']}];
+const config={providerUrl:'https://example.test',apiKey:'fake',model:'fake',providerTimeoutMs:1000};
+const mock=(fn)=>async (_url,opts)=>{const payload=JSON.parse(JSON.parse(opts.body).messages[1].content);return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(fn(payload))}}]}));};
+test('QA retries unknown references and sends full context',async()=>{let calls=0;const result=await runReviewStage({stage:'qa',input,outline,units,targetUnitId:'u',question:'为何',history:[],noteIds:['n']},config,{fetchImpl:mock(p=>{assert.equal(p.sources[0].text,'完整原文');assert.equal(p.units[0].markdown,'完整正文');calls++;return {answerMarkdown:'解释',sourceIds:[calls===1?'missing':'s'],updates:[],clarificationNeeded:false};})});assert.equal(calls,2);assert.deepEqual(result.sourceIds,['s']);});
+test('graph rejects unknown IDs after retry',async()=>{let calls=0;await assert.rejects(runReviewStage({stage:'graph',input,outline,units},config,{fetchImpl:mock(()=>{calls++;return {nodes:[{unitId:'bad'}],edges:[]};})}),/cover units/);assert.equal(calls,2);});
+test('notes enforce complete coverage and answered updates',async()=>{await assert.rejects(runReviewStage({stage:'notes',input,outline,units},config,{fetchImpl:mock(()=>({items:[],updates:[]}))}),/covered exactly once/);const result=await runReviewStage({stage:'notes',input,outline,units},config,{fetchImpl:mock(()=>({items:[{noteId:'n',disposition:'answered',unitId:'u',answerMarkdown:'解释',sourceIds:['s']}],updates:[{unitId:'u',markdown:'融入解释'}]}))});assert.equal(result.items[0].noteId,'n');});

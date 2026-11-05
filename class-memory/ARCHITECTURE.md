@@ -13,6 +13,9 @@ Paths under `android/app/src/main/java/com/classmemory/app/`:
 | `data/` | Room entities and v1–v6 migrations / 数据与迁移 |
 | `repository/` | Persistence, append, safe photo deletion / 持久化与文件 |
 | `export/` | Markdown and embedded-image Notebook / 导出 |
+| `course/`, `review/` | Course context, review stages, saved questions, revisions, knowledge maps and progress / 课程上下文、问答、知识图与进度 |
+
+The Android review UI lives under `ui/ReviewScreen.kt` and `ui/ReviewQuestions.kt`. The sibling [study-agent-server](study-agent-server/README.md) validates requests, invokes the configured provider and checks references. The phone keeps results in app-private storage. Use the [handoff](../CURRENT.md) for the exact state of this release.
 
 `src/debug/.../benchmark/` contains file import/decoding/metrics. `src/test/` contains synthetic-data JVM tests. `src/main/java/com/k2fsa/sherpa/onnx/` contains upstream JNI declarations; preserve copyright notices. Native libraries live in `src/main/jniLibs/arm64-v8a/`.
 

@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {runReviewStage} from '../review-v3.mjs';
+const input={schemaVersion:3,sessionId:'c',sourceHash:'a'.repeat(64),language:'zh',today:'2026-11-05',course:{id:'course',revision:1,name:'课',background:'',goals:'',chapters:'',terminology:'',prerequisites:'',sources:''},sources:[{id:'s',sessionId:'c',segmentId:'s',startMs:0,endMs:10,text:'原文',isCurrent:true},{id:'old',sessionId:'previous',segmentId:'old',startMs:0,endMs:10,text:'历史',isCurrent:false}],photos:[],notes:[{id:'q',atMs:1,kind:'QUESTION',text:'没听懂'},{id:'n',atMs:2,kind:'COMMENT',text:'指公式'}]};
+const outline={overview:'概览',sections:[{id:'sec',title:'节',sourceIds:['s']}],topics:[{id:'u',title:'标题',sectionIds:['sec'],sourceIds:['s']}]};
+const units=[{id:'u',title:'标题',markdown:'原正文',explanation:'解释',conditions:'',classroomFocus:'重点',example:null,sourceIds:['s'],photoIds:[],sectionIds:['sec']}];
+const config={providerUrl:'https://example.test',apiKey:'fake',model:'fake',providerTimeoutMs:1000};
+const makeResult=()=>({items:[{noteId:'q',disposition:'answered',unitId:'u',answerMarkdown:'解释',sourceIds:['s']},{noteId:'n',disposition:'context',unitId:null,relatedQuestionNoteId:'q',answerMarkdown:'',sourceIds:[]}],updates:[{unitId:'u',markdown:'原正文和解释'}]});
+const run=(result)=>runReviewStage({stage:'notes',input,outline,units},config,{fetchImpl:async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]}))});
+test('notes only reference visible current sources',async()=>{const r=makeResult();r.items[0].sourceIds=['old'];await assert.rejects(run(r),/Unknown source reference/);});
+test('answered note cannot return unchanged unit',async()=>{const r=makeResult();r.updates[0].markdown='原正文';await assert.rejects(run(r),/must change/);});
+test('comment links to question, rejecting invalid links',async()=>{const r=makeResult();assert.equal((await run(r)).items[1].relatedQuestionNoteId,'q');r.items[1].relatedQuestionNoteId='n';await assert.rejects(run(r),/Invalid related question/);});

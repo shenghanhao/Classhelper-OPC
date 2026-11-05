@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.classmemory.app.data.Session
 import com.classmemory.app.BuildConfig
+import com.classmemory.app.review.ReviewRuntime
 import com.classmemory.app.data.SessionStatus
 import com.classmemory.app.data.displayCourseType
 import com.classmemory.app.i18n.AppLanguage
@@ -48,6 +49,8 @@ fun HomeScreen(
     onDetail: (String) -> Unit,
     onSettings: () -> Unit,
     onManageHotwords: () -> Unit,
+    reviewRuntime: ReviewRuntime? = null,
+    onReview: (String) -> Unit = {},
 ) {
     val sessions by repo.sessions().collectAsState(emptyList())
     val courseTypes by repo.courseTypes().collectAsState(emptyList())
@@ -142,6 +145,9 @@ fun HomeScreen(
             contentPadding = PaddingValues(start = ClassMemorySpacing.screen, end = ClassMemorySpacing.screen, top = 4.dp, bottom = 25.dp),
             verticalArrangement = Arrangement.spacedBy(11.dp),
         ) {
+            if (reviewRuntime != null && (BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "opc")) item {
+                PendingReviews(repo, reviewRuntime, sessions, onReview)
+            }
             item {
                 Column(
                     modifier = Modifier.fillMaxWidth().background(palette.surfaceAlt, RoundedCornerShape(24.dp)).padding(20.dp),

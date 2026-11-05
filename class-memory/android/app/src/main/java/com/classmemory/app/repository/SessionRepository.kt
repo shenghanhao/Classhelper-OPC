@@ -2,6 +2,10 @@ package com.classmemory.app.repository
 
 import com.classmemory.app.ai.StudyResultStore
 import com.classmemory.app.ai.StudySnapshot
+import com.classmemory.app.course.CourseContext
+import com.classmemory.app.course.CourseContextStore
+import com.classmemory.app.review.*
+import java.time.LocalDate
 import com.classmemory.app.data.*
 import com.classmemory.app.i18n.tr
 import androidx.room.withTransaction
@@ -9,7 +13,6 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
@@ -19,10 +22,64 @@ class SessionRepository(
     private val db: AppDatabase,
     private val boardPhotoRoot: File? = null,
     private val studyResults: StudyResultStore? = null,
+    private val courseContextStore: CourseContextStore? = null,
+    private val reviewResults: ReviewStore? = null,
 ) {
     private val recoveryLock = Mutex()
     private val fileMutationLock = Mutex()
     private var recoveryComplete = false
+
+    private fun contexts() = checkNotNull(courseContextStore) { "Course storage unavailable / 课程存储不可用" }
+    fun courseContexts() = contexts().observe()
+    suspend fun saveCourseContext(course: CourseContext) = contexts().save(course)
+    suspend fun assignCourse(sessionId: String, courseId: String?) = fileMutationLock.withLock {
+        check(db.sessions().find(sessionId) != null) { tr("课堂记录不存在", "Class record does not exist") }
+        contexts().assign(sessionId, courseId)
+    }
+    suspend fun courseContext(sessionId: String) = contexts().snapshot().courseFor(sessionId)
+
+    suspend fun prepareReview(sessionId: String, language: String): ReviewInput = withContext(Dispatchers.Default) {
+        val contextState = contexts().snapshot()
+        val course = contextState.courseFor(sessionId)
+        val input = db.withTransaction {
+            val current = db.sessions().find(sessionId) ?: error(tr("课堂已删除", "Class was deleted"))
+            check(current.status != SessionStatus.recording) { tr("请先结束课堂", "End the class first") }
+            val history = if (course == null) emptyList() else db.sessions().snapshotAll().filter {
+                it.id != sessionId && it.startedAt < current.startedAt && it.status != SessionStatus.recording &&
+                    contextState.assignments[it.id] == course.id
+            }
+            val selected = listOf(current) + history
+            val sources = selected.flatMap { session -> db.segments().snapshotFor(session.id).map { segment ->
+                ReviewSource("s_${session.id}_${segment.id}", session.id, segment.id, segment.startMs, segment.endMs, segment.text, session.id == sessionId)
+            } }
+            check(sources.any { it.isCurrent }) { tr("课堂尚无最终转写", "No final transcript in this class") }
+            val sourceSessionIds = sources.map { it.sessionId }.toSet()
+            val photos = selected.filter { it.id in sourceSessionIds }.flatMap { session -> db.boardPhotos().snapshotFor(session.id).map {
+                ReviewPhotoRef(it.id, it.sessionId, it.capturedAtMs)
+            } }
+            val notes = db.classroomNotes().snapshotFor(sessionId).map { ReviewNote(it.id, it.atMs, it.kind.name, it.text) }
+            ReviewInput(sessionId, "", language, current.title, LocalDate.now().toString(), course, sources, photos, notes, analysisVersion = 3)
+        }
+        check(contexts().snapshot() == contextState) { tr("课程资料已更新，请重新打开", "Course context changed; reopen the class") }
+        input.copy(sourceHash = input.contentHash()).also { ReviewContracts.validate(it) }
+    }
+
+    /** Compare V2 using its original identity rules, while new requests always use V3. */
+    suspend fun reviewMatchesCurrent(run: ReviewRun, prepared: ReviewInput? = null): Boolean {
+        val current = prepared ?: prepareReview(run.input.sessionId, run.input.language)
+        if (run.input.analysisVersion != 2) return current.sourceHash == run.input.sourceHash
+        val sessionIds = current.sources.map { it.sessionId }.toSet()
+        val photos = db.withTransaction {
+            sessionIds.flatMap { id -> db.boardPhotos().snapshotFor(id).map { ReviewPhotoRef(it.id, it.sessionId, it.capturedAtMs) } }
+        }
+        // V2 produced photos in current-then-history session order.
+        return current.matchesLegacyReview(run, photos)
+    }
+
+    suspend fun reviewSourceHash(sessionId: String, language: String): String? {
+        if (db.sessions().find(sessionId) == null) return null
+        return prepareReview(sessionId, language).sourceHash
+    }
 
     suspend fun recoverAbandonedSessions(now: Long = System.currentTimeMillis()): Int = recoveryLock.withLock {
         if (recoveryComplete) return@withLock 0
@@ -92,6 +149,7 @@ class SessionRepository(
             studyResults?.let { store ->
                 withContext(NonCancellable) { runCatching { store.deleteSession(id) } }
             }
+            reviewResults?.let { store -> withContext(NonCancellable) { store.deleteSession(id) } }
         }
         deleted
     }
@@ -210,6 +268,7 @@ class SessionRepository(
             segments = segments,
             notes = db.classroomNotes().snapshotFor(sessionId),
             capturedAt = System.currentTimeMillis(),
+            courseContextKey = courseContextStore?.snapshot()?.contextKey(sessionId),
         )
     }
 

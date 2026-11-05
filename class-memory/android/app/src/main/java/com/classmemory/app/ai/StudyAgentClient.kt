@@ -70,7 +70,7 @@ class StudyAgentClient(
         response.use { result ->
             val responseBody = result.body
                 ?: throw StudyAgentException(StudyClientError.BAD_RESPONSE, result.code, "Study service returned no body")
-            val body = withContext(Dispatchers.IO) { readLimited(responseBody) }
+            val body = withContext(Dispatchers.IO) { readComplete(responseBody) }
             if (!result.isSuccessful) {
                 throw errorFor(result.code, body)
             }
@@ -123,25 +123,19 @@ class StudyAgentClient(
         return StudyAgentException(kind, status, message)
     }
 
-    private fun readLimited(body: ResponseBody): String {
+    private fun readComplete(body: ResponseBody): String {
         val stream = body.byteStream()
         val output = ByteArrayOutputStream()
         val chunk = ByteArray(8 * 1024)
-        var total = 0
         while (true) {
             val read = stream.read(chunk)
             if (read < 0) break
-            total += read
-            if (total > MAX_RESPONSE_BYTES) {
-                throw StudyAgentException(StudyClientError.BAD_RESPONSE, message = "Study response is too large")
-            }
             output.write(chunk, 0, read)
         }
         return String(output.toByteArray(), Charsets.UTF_8)
     }
 
     companion object {
-        const val MAX_RESPONSE_BYTES = 256 * 1024
         private const val PATH = "/v1/study/analyze"
 
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()

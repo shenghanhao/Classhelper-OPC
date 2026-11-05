@@ -68,6 +68,14 @@ class StudyResultStoreTest {
     }
 
     @Test
+    fun largeSummarySurvivesPersistence() = runBlocking {
+        val snapshot = snapshot()
+        val saved = record(snapshot).copy(summary = "a".repeat(300_000))
+        store.save(saved)
+        assertEquals(saved, store.load(snapshot.sessionId, snapshot.sourceHash))
+    }
+
+    @Test
     fun saveLoadRoundTripAndAtomicFile() = runBlocking {
         val snapshot = snapshot()
         val saved = record(snapshot)

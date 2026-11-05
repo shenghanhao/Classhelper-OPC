@@ -1,15 +1,9 @@
 import { createServer } from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { runReviewStage as runReviewV3, ReviewError as ReviewV3Error } from "./review-v3.mjs";
+import { runReviewStage, ReviewError } from "./review-v2.mjs";
 
-const MAX_BODY_BYTES = 512 * 1024;
-const MAX_SEGMENTS = 400;
-const MAX_NOTES = 100;
-const MAX_INPUT_CHARS = 20_000;
-const MAX_SUMMARY_CHARS = 4_000;
-const MAX_POINTS = 12;
-const MAX_EVIDENCE = 5;
-const MAX_QUOTE_CHARS = 240;
 const SCHEMA_VERSION = 1;
 const SKILL_VERSION = "opc-summary-v1";
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -19,19 +13,19 @@ const SYSTEM_PROMPT = `你是 ClassMemory AI 的课堂复习分析器。你的�
 
 只输出一个 JSON 对象，不要输出 Markdown、代码围栏或解释。结构必须是：
 {
-  "summary": "1-4000 字的课堂总结",
+  "summary": "完整的课堂总结",
   "knowledgePoints": [
     {
       "id": "kp-1",
-      "title": "不超过 120 字",
-      "explanation": "不超过 800 字",
+      "title": "知识点标题",
+      "explanation": "完整解释、条件与课堂例子",
       "evidence": [{"segmentId": "原文片段 id", "quote": "原文中的逐字短句"}]
     }
   ]
 }
 
 规则：
-1. 生成 1-12 个知识点。每个知识点必须有 1-5 条 evidence，且 segmentId 必须来自输入 segments。
+1. 根据课堂内容生成完整的知识点，不限制数量或字数。每个知识点必须有 evidence，且 segmentId 必须来自输入 segments。
 2. evidence.quote 必须是该 segment.text 中的逐字子串，不能改写、概括或拼接；只允许忽略空白差异。
 3. 材料不足以支持结论时减少知识点，禁止编造、补造证据或把常识伪装成课堂内容。
 4. 首次分析只产出「待验证知识点」，不要声称已经掌握、掌握率或学习效果。
@@ -53,13 +47,14 @@ export function loadConfig(env = process.env) {
     port: Number.parseInt(env.STUDY_AGENT_PORT || "8787", 10),
     providerUrl: env.STUDY_PROVIDER_URL || "",
     apiKey: env.STUDY_PROVIDER_API_KEY || "",
-    model: env.STUDY_MODEL || "deepseek-chat",
+    model: env.STUDY_MODEL || "deepseek-flash",
     accessToken: env.STUDY_ACCESS_TOKEN || "",
-    providerTimeoutMs: Number.parseInt(env.STUDY_PROVIDER_TIMEOUT_MS || "55000", 10),
-    ratePerHour: Number.parseInt(env.STUDY_RATE_LIMIT_PER_HOUR || "20", 10),
-    dailyLimit: Number.parseInt(env.STUDY_DAILY_LIMIT || "100", 10),
+    providerTimeoutMs: Number.parseInt(env.STUDY_PROVIDER_TIMEOUT_MS || "180000", 10),
+    ratePerHour: Number.parseInt(env.STUDY_RATE_LIMIT_PER_HOUR || "300", 10),
+    dailyLimit: Number.parseInt(env.STUDY_DAILY_LIMIT || "2000", 10),
     maxConcurrent: Number.parseInt(env.STUDY_MAX_CONCURRENT || "2", 10),
     jsonMode: (env.STUDY_PROVIDER_JSON_MODE || "true") !== "false",
+    reviewBatchChars: Number.parseInt(env.STUDY_REVIEW_BATCH_CHARS || "60000", 10),
   };
 }
 
@@ -116,7 +111,7 @@ export function createStudyServer(config, deps = {}) {
         });
         return;
       }
-      if (req.method !== "POST" || url.pathname !== "/v1/study/analyze") {
+      if (req.method !== "POST" || !["/v1/study/analyze", "/v2/study/review", "/v3/study/review"].includes(url.pathname)) {
         throw new HttpError(404, "NOT_FOUND", "Not found");
       }
       checkAccess(req);
@@ -127,6 +122,27 @@ export function createStudyServer(config, deps = {}) {
         throw new HttpError(429, "BUSY", "The study service is busy; try again shortly");
       }
       checkQuota(req);
+      if (["/v2/study/review", "/v3/study/review"].includes(url.pathname)) {
+        const request = await readJson(req);
+        requestId = randomUUID();
+        active += 1;
+        const cancellation = new AbortController();
+        const disconnect = () => { if (!res.writableEnded) cancellation.abort(); };
+        res.on("close", disconnect);
+        try {
+          const result = await (url.pathname === "/v3/study/review" ? runReviewV3 : runReviewStage)(request, config, {
+            fetchImpl, signal: cancellation.signal,
+            onUsage: (usage) => logLine(log, {
+              requestId, event: "review_provider_usage",
+              promptTokens: Number.isFinite(usage?.prompt_tokens) ? usage.prompt_tokens : null,
+              completionTokens: Number.isFinite(usage?.completion_tokens) ? usage.completion_tokens : null,
+            }),
+          });
+          sendJson(res, 200, result);
+          logLine(log, { requestId, status: 200, stage: request.stage, ms: Date.now() - started });
+        } finally { active -= 1; res.removeListener("close", disconnect); }
+        return;
+      }
       const payload = validateRequest(await readJson(req));
       requestId = payload.requestId;
       active += 1;
@@ -147,10 +163,11 @@ export function createStudyServer(config, deps = {}) {
         usage: providerResult.usage,
       });
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
-      const code = error instanceof HttpError ? error.code : "INTERNAL";
-      const message = error instanceof HttpError ? error.message : "Internal study service error";
-      if (status >= 500 && !(error instanceof HttpError)) {
+      const expected = error instanceof HttpError || error instanceof ReviewError || error instanceof ReviewV3Error;
+      const status = expected ? error.status : 500;
+      const code = expected ? error.code : "INTERNAL";
+      const message = expected ? error.message : "Internal study service error";
+      if (status >= 500 && !expected) {
         log.error(JSON.stringify({ requestId, status, code, error: error?.stack || String(error) }));
       }
       if (!res.headersSent) sendJson(res, status, { error: { code, message } });
@@ -164,7 +181,6 @@ async function readJson(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "BODY_TOO_LARGE", "Request body is too large");
     chunks.push(chunk);
   }
   if (size === 0) throw new HttpError(400, "INVALID_JSON", "Request body is empty");
@@ -189,12 +205,12 @@ function validateRequest(payload) {
   if (typeof payload.requestId !== "string" || !ID_PATTERN.test(payload.requestId)) fail("Invalid requestId");
   if (payload.skillVersion !== SKILL_VERSION) fail("Unsupported skillVersion");
   if (payload.language !== "zh" && payload.language !== "en") fail("language must be zh or en");
-  const title = optionalString(payload.title, 200, "title", fail);
-  const courseType = optionalString(payload.courseType, 100, "courseType", fail);
-  if (!Array.isArray(payload.segments) || payload.segments.length < 1 || payload.segments.length > MAX_SEGMENTS) {
-    fail(`segments must contain 1-${MAX_SEGMENTS} items`);
+  const title = optionalString(payload.title, "title", fail);
+  const courseType = optionalString(payload.courseType, "courseType", fail);
+  if (!Array.isArray(payload.segments) || payload.segments.length < 1) {
+    fail("segments must contain at least one item");
   }
-  if (!Array.isArray(payload.notes) || payload.notes.length > MAX_NOTES) fail(`notes must contain 0-${MAX_NOTES} items`);
+  if (!Array.isArray(payload.notes)) fail("notes must be an array");
 
   const segmentIds = new Set();
   const segments = payload.segments.map((item, index) => {
@@ -206,7 +222,7 @@ function validateRequest(payload) {
     const startMs = integer(item.startMs, `segments[${index}].startMs`, fail);
     const endMs = integer(item.endMs, `segments[${index}].endMs`, fail);
     if (endMs < startMs) fail(`segments[${index}] ends before it starts`);
-    if (typeof item.text !== "string" || item.text.trim().length === 0 || item.text.length > 4000) {
+    if (typeof item.text !== "string" || item.text.trim().length === 0) {
       fail(`segments[${index}].text is invalid`);
     }
     return { id: item.id, startMs, endMs, text: item.text };
@@ -220,7 +236,7 @@ function validateRequest(payload) {
     }
     noteIds.add(item.id);
     if (item.kind !== "QUESTION" && item.kind !== "COMMENT") fail(`notes[${index}].kind is invalid`);
-    if (typeof item.text !== "string" || item.text.trim().length === 0 || item.text.length > 2000) {
+    if (typeof item.text !== "string" || item.text.trim().length === 0) {
       fail(`notes[${index}].text is invalid`);
     }
     return { id: item.id, atMs: integer(item.atMs, `notes[${index}].atMs`, fail), kind: item.kind, text: item.text };
@@ -229,7 +245,6 @@ function validateRequest(payload) {
   const charCount =
     segments.reduce((sum, item) => sum + item.text.length, 0) +
     notes.reduce((sum, item) => sum + item.text.length, 0);
-  if (charCount > MAX_INPUT_CHARS) fail(`Input is too large: ${charCount} characters`);
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -245,9 +260,9 @@ function validateRequest(payload) {
   };
 }
 
-function optionalString(value, max, name, fail) {
+function optionalString(value, name, fail) {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "string" || value.length > max) fail(`${name} is invalid`);
+  if (typeof value !== "string") fail(`${name} is invalid`);
   return value.trim() || null;
 }
 
@@ -281,7 +296,6 @@ async function callProvider(config, payload, fetchImpl) {
       body: JSON.stringify({
         model: config.model,
         temperature: 0.2,
-        max_tokens: 2500,
         ...(config.jsonMode ? { response_format: { type: "json_object" } } : {}),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -307,7 +321,11 @@ async function callProvider(config, payload, fetchImpl) {
     if (response.status === 429) throw new HttpError(429, "RATE_LIMITED", "The model service quota is exhausted");
     throw new HttpError(502, "PROVIDER_ERROR", `The model service failed with HTTP ${response.status}`);
   }
-  const content = body?.choices?.[0]?.message?.content;
+  const choice = body?.choices?.[0];
+  if (choice?.finish_reason === "length") {
+    throw new HttpError(502, "PROVIDER_INCOMPLETE", "The model reached its output capacity; no partial analysis was saved");
+  }
+  const content = choice?.message?.content;
   if (typeof content !== "string" || content.trim().length === 0) {
     throw new HttpError(502, "PROVIDER_BAD_RESPONSE", "The model service returned no content");
   }
@@ -321,9 +339,9 @@ function normalizeAnalysis(content, payload) {
   };
   if (typeof object.summary !== "string") fail("summary is missing");
   const summary = object.summary.trim();
-  if (summary.length === 0 || summary.length > MAX_SUMMARY_CHARS) fail("summary is empty or too long");
-  if (!Array.isArray(object.knowledgePoints) || object.knowledgePoints.length < 1 || object.knowledgePoints.length > MAX_POINTS) {
-    fail(`knowledgePoints must contain 1-${MAX_POINTS} items`);
+  if (summary.length === 0) fail("summary is empty");
+  if (!Array.isArray(object.knowledgePoints) || object.knowledgePoints.length < 1) {
+    fail("knowledgePoints must contain at least one item");
   }
   const segmentById = new Map(payload.segments.map((item) => [item.id, item]));
   const usedIds = new Set();
@@ -333,14 +351,14 @@ function normalizeAnalysis(content, payload) {
       fail(`knowledgePoints[${index}].id is invalid or duplicated`);
     }
     usedIds.add(point.id);
-    if (typeof point.title !== "string" || point.title.trim().length === 0 || point.title.length > 120) {
+    if (typeof point.title !== "string" || point.title.trim().length === 0) {
       fail(`knowledgePoints[${index}].title is invalid`);
     }
-    if (typeof point.explanation !== "string" || point.explanation.trim().length === 0 || point.explanation.length > 800) {
+    if (typeof point.explanation !== "string" || point.explanation.trim().length === 0) {
       fail(`knowledgePoints[${index}].explanation is invalid`);
     }
-    if (!Array.isArray(point.evidence) || point.evidence.length < 1 || point.evidence.length > MAX_EVIDENCE) {
-      fail(`knowledgePoints[${index}].evidence must contain 1-${MAX_EVIDENCE} items`);
+    if (!Array.isArray(point.evidence) || point.evidence.length < 1) {
+      fail(`knowledgePoints[${index}].evidence must contain at least one item`);
     }
     const evidenceIds = new Set();
     const evidence = point.evidence.map((item, evidenceIndex) => {
@@ -352,7 +370,7 @@ function normalizeAnalysis(content, payload) {
       evidenceIds.add(item.segmentId);
       if (typeof item.quote !== "string") fail(`evidence[${index}][${evidenceIndex}].quote is invalid`);
       const quote = item.quote.trim();
-      if (quote.length === 0 || quote.length > MAX_QUOTE_CHARS) fail(`evidence[${index}][${evidenceIndex}].quote is invalid`);
+      if (quote.length === 0) fail(`evidence[${index}][${evidenceIndex}].quote is invalid`);
       if (!normalizeText(segment.text).includes(normalizeText(quote))) {
         fail(`evidence[${index}][${evidenceIndex}] is not a verbatim quote from the selected transcript`);
       }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -33,6 +34,8 @@ import com.classmemory.app.data.Session
 import com.classmemory.app.data.TranscriptSegment
 import com.classmemory.app.data.ClassroomNote
 import com.classmemory.app.data.displayCourseType
+import com.classmemory.app.BuildConfig
+import com.classmemory.app.data.SessionStatus
 import com.classmemory.app.export.shareMarkdown
 import com.classmemory.app.export.shareNotebook
 import com.classmemory.app.repository.SessionRepository
@@ -51,7 +54,11 @@ private enum class ExportFormat { Markdown, Notebook }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionDetailScreen(repo: SessionRepository, id: String, onBack: () -> Unit) {
+fun SessionDetailScreen(
+    repo: SessionRepository, id: String,
+    onReview: () -> Unit = {}, initialTimelineKey: String? = null, initialPhotoId: String? = null,
+    onBack: () -> Unit,
+) {
     val session by repo.session(id).collectAsState(null)
     val rows by repo.segments(id).collectAsState(initial = null as List<TranscriptSegment>?)
     val photos by repo.photos(id).collectAsState(initial = null as List<BoardPhoto>?)
@@ -62,6 +69,8 @@ fun SessionDetailScreen(repo: SessionRepository, id: String, onBack: () -> Unit)
     val dataLoaded = rows != null && photos != null && notes != null
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val showReview = BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "opc"
     val snackbar = remember { SnackbarHostState() }
     val timeline = remember(rowsSnapshot, photosSnapshot, notesSnapshot) { buildSessionTimeline(rowsSnapshot, photosSnapshot, notesSnapshot) }
     var timelineFilter by rememberSaveable(id) { mutableStateOf(SessionTimelineFilter.ALL) }
@@ -74,6 +83,21 @@ fun SessionDetailScreen(repo: SessionRepository, id: String, onBack: () -> Unit)
     var updatingOrganized by remember(id) { mutableStateOf(false) }
     var selectedPhoto by remember(id) { mutableStateOf<BoardPhoto?>(null) }
     var deletingPhotoId by remember(id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(dataLoaded, initialTimelineKey, initialPhotoId) {
+        if (dataLoaded) {
+            initialPhotoId?.let { photoId ->
+                selectedPhoto = photosSnapshot.find { it.id == photoId }
+                if (selectedPhoto == null) snackbar.showSnackbar(tr("该板书已删除或不存在", "This board photo is no longer available"))
+            }
+            initialTimelineKey?.let { key ->
+                timelineFilter = SessionTimelineFilter.ALL
+                val index = timeline.indexOfFirst { it.key == key }
+                if (index >= 0) listState.scrollToItem(index + if (showReview) 4 else 3)
+                else snackbar.showSnackbar(tr("引用的原文已删除或不存在", "The cited source is no longer available"))
+            }
+        }
+    }
 
     LaunchedEffect(id, photosSnapshot.map { it.id }.toSet(), deletingPhotoId) {
         val selected = selectedPhoto
@@ -104,6 +128,7 @@ fun SessionDetailScreen(repo: SessionRepository, id: String, onBack: () -> Unit)
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -126,6 +151,12 @@ fun SessionDetailScreen(repo: SessionRepository, id: String, onBack: () -> Unit)
                 )
             }
             item { ExportShortcutSection(session != null && dataLoaded && exporting == null, exporting) { exportFormat = it } }
+            if (showReview) item {
+                FilledTonalButton(onClick = onReview, enabled = dataLoaded && session != null && session?.status != SessionStatus.recording,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(tr("课程复习 · 生成或查看方案", "Class review · Create or open"))
+                }
+            }
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("课堂时间线", "Class timeline"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
