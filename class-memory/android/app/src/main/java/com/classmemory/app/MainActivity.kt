@@ -16,6 +16,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.core.content.ContextCompat
 import com.classmemory.app.service.RecordingService
+import com.classmemory.app.benchmark.DebugBenchmarkActivity
+import com.classmemory.app.benchmark.DebugBenchmarkService
+import com.classmemory.app.i18n.AppLanguage
 import com.classmemory.app.i18n.tr
 import com.classmemory.app.ui.*
 import com.classmemory.app.ui.theme.ClassMemoryTheme
@@ -34,7 +37,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 if (RecordingService.state.value.sessionId != null) {
                     page = Screen.Recording
-                } else runCatching {
+                } else if (!DebugBenchmarkService.state.value.running) runCatching {
                     (application as ClassMemoryApp).repository.recoverAbandonedSessions()
                 }.onFailure { startupError = tr("无法恢复上次课堂记录：${it.message ?: "数据库初始化失败"}", "Couldn't restore the previous class: ${it.message ?: "Database initialization failed"}") }
             }
@@ -55,7 +58,9 @@ class MainActivity : ComponentActivity() {
                 val detail = page as? Screen.Detail
                 page = detail?.returnReviewId?.let { Screen.Review(it) } ?: Screen.Home
             }
-            when (val current = page) {
+            // Refresh screen-local cached text while retaining navigation and review state.
+            key(AppLanguage.isEnglish) {
+              when (val current = page) {
                 Screen.Home -> HomeScreen(
                     repo = (application as ClassMemoryApp).repository,
                     onStart = {
@@ -66,17 +71,12 @@ class MainActivity : ComponentActivity() {
                     },
                     onImport = {
                         runCatching {
-                            startActivity(
-                                Intent().setClassName(
-                                    this,
-                                    "com.classmemory.app.benchmark.DebugBenchmarkActivity",
-                                ),
-                            )
+                            startActivity(Intent(this, DebugBenchmarkActivity::class.java))
                         }.onFailure {
                             Toast.makeText(this, tr("当前安装包不支持导入音频", "Audio import is not supported in this build"), Toast.LENGTH_LONG).show()
                         }
                     },
-                    showImport = BuildConfig.BUILD_TYPE == "debug",
+                    showImport = true,
                     onDetail = { page = Screen.Detail(it) },
                     onSettings = { page = Screen.Settings },
                     onManageHotwords = { openHotwordManager = true; page = Screen.Settings },
@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
                     onOpenClass = { page = Screen.Detail(it) },
                     onReviewSettings = { page = Screen.ReviewSettings(null) },
                 )
+              }
             }
           }
         }

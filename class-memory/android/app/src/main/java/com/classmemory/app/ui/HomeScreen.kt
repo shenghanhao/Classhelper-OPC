@@ -56,6 +56,7 @@ fun HomeScreen(
     val courseTypes by repo.courseTypes().collectAsState(emptyList())
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val english = AppLanguage.isEnglish
     val snackbar = remember { SnackbarHostState() }
     val palette = ClassMemoryColors.current
     val supportsCourseHotwords = remember { AsrHotwordPreferences.supportsCourseHotwords() }
@@ -94,7 +95,7 @@ fun HomeScreen(
                     Icon(ClassMemoryIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp), tint = palette.onPrimary)
                 }
                 Text(
-                    if (BuildConfig.ASR_COMPARISON && !supportsCourseHotwords) BuildConfig.ASR_MODEL_LABEL else tr("课堂记忆", "Class Memory"),
+                    tr("课堂记忆", "Class Memory"),
                     style = if (supportsCourseHotwords) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.weight(1f).padding(start = 10.dp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -105,14 +106,17 @@ fun HomeScreen(
                         }
                         DropdownMenu(expanded = debugMenuExpanded, onDismissRequest = { if (!appending) debugMenuExpanded = false }) {
                             if (showImport) {
-                                DropdownMenuItem(text = { Text(tr("导入测试音频", "Import test audio")) }, enabled = !appending, onClick = {
+                                DropdownMenuItem(text = { Text(tr("导入课堂录音", "Import class recording")) }, enabled = !appending, onClick = {
                                     debugMenuExpanded = false
                                     if (!appending) onImport()
                                 })
                             }
                             DropdownMenuItem(
-                                text = { Text(if (AppLanguage.isEnglish) "切换 中文" else "Switch to English") },
-                                onClick = { debugMenuExpanded = false; AppLanguage.toggle(context) },
+                                text = { Text(if (english) "切换 中文" else "Switch to English") },
+                                onClick = {
+                                    debugMenuExpanded = false
+                                    AppLanguage.selectEnglish(context, selected = !english)
+                                },
                             )
                         }
                 }

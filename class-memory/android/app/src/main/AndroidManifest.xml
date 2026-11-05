@@ -2,6 +2,7 @@
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
@@ -18,6 +19,14 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
+    <activity
+        android:name=".benchmark.DebugBenchmarkActivity"
+        android:exported="false"
+        android:label="@string/app_name" />
+    <service
+        android:name=".benchmark.DebugBenchmarkService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
     <service
         android:name=".service.RecordingService"
         android:exported="false"

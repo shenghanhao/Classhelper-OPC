@@ -24,7 +24,7 @@ data class DecodeSummary(
 )
 
 /**
- * Debug-only URI decoder used by the ASR benchmark.
+ * Streaming URI decoder shared by class recording import and Debug benchmarks.
  *
  * It owns neither the URI nor the callback's samples. The callback is invoked serially and a
  * returned [ShortArray] may be reused immediately after that invocation returns.

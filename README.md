@@ -4,7 +4,7 @@
 
 首页 **⋯**：中文界面选 **Switch to English**，英文界面选 **切换 中文**。选择会保存，公开版首次默认英文；切换界面语言不会更换识别模型或翻译老师的话。
 
-**下载 / Download** · [OPC 测试安装包 / OPC APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/ClassMemory-OPC.apk) · [Debug APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/ClassMemory-Debug.apk) · [SHA-256](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.0/SHA256SUMS.txt)
+**下载 / Download** · [OPC 测试安装包 / OPC APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.1/ClassMemory-OPC.apk) · [Debug APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.1/ClassMemory-Debug.apk) · [SHA-256](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.1/SHA256SUMS.txt)
 
 **Dot / 开发接手** · 在本发布分支从 [CURRENT.md](CURRENT.md) 开始。For the implementation status, test evidence, and first development steps, read [CURRENT.md](CURRENT.md).
 
@@ -22,7 +22,7 @@ An experimental local Android transcription app. It saves final text, your quest
 4. Add a **Question** or **Comment**, or **Capture board**. Each gets a classroom-relative timestamp. Expand the board drawer to view/zoom/reset photos or delete with confirmation.
 5. Tap **End class** at the top and confirm. Open history to rename/classify a classroom, mark it organized or append another completed note. Filter the timeline by **All**, **Board photos**, or **Questions & comments**.
 6. Export **Markdown** for text/annotations or **Notebook (.ipynb)** for text with embedded photos. Sharing is manual; a recipient app/cloud may upload the shared file. Check sensitive content and permissions first.
-7. Debug/test APKs provide **⋯ → Import test audio**. Select authorized WAV/M4A etc.; decoding produces 16 kHz mono PCM for local ASR, without creating an app-owned audio copy. The original file is not deleted. Reports include duration, RTF, backlog and memory.
+7. Select **⋯ → Import class recording** in either APK. Choose a WAV/M4A recording and start local recognition. Open the saved class in History after completion. Audio is decoded to 16 kHz mono PCM in memory. Your original file remains in its existing location.
 
 Hotwords start disabled and empty. Create your own course/library in Settings, import/export its JSON, then select it on Home. Use a small relevant vocabulary. The public build includes **no private course schedule, classroom audio/transcript or starter vocabulary**.
 
@@ -54,7 +54,7 @@ Output: `class-memory/android/app/build/outputs/apk/debug/app-debug.apk`. This i
 4. 添加疑问、注释或拍摄板书，会自动附上课堂相对时间。展开板书预览可缩放、复位及二次确认删除。
 5. 顶部“结束课堂”并确认，再从历史查看、改名、分类、标记整理或追加其他已结束笔记。可筛选所有、板书或疑问与注释。
 6. Markdown导出文字与标注；Notebook导出时间线和内嵌图片。分享前检查隐私/版权，接收方软件或云服务可能上传文件。
-7. Debug测试版的 **⋯ → 导入测试音频** 支持获授权的 WAV/M4A等输入，解码为16kHz单声道PCM后本地识别，不另存音频，不删除原文件；报告包含RTF等指标。
+7. 两款安装包均可从 **⋯ → 导入课堂录音** 选择 WAV/M4A 等录音并开始本地识别，完成后在历史课堂中打开文字。识别使用内存中的16kHz单声道PCM，原始文件留在原位置。
 
 热词默认关闭、从空词库开始。设置中自建课程/词库并导入导出JSON，首页选择对应库。不要开启大量不相关词。公开版不附带个人课表、课堂资料或私人词库。
 

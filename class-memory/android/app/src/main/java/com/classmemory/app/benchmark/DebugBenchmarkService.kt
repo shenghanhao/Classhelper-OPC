@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -13,9 +14,11 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import androidx.core.app.NotificationCompat
 import com.classmemory.app.ClassMemoryApp
 import com.classmemory.app.BuildConfig
+import com.classmemory.app.service.RecordingService
 import com.classmemory.app.asr.LocalAsrEvent
 import com.classmemory.app.asr.LocalAsrSession
 import com.classmemory.app.asr.AsrHotwordSettings
@@ -46,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 import kotlin.math.min
 
-/** Debug-only modes. FAST decodes one complete input; REALTIME loops a short fixture to the target. */
+/** FAST imports a complete recording; Debug-only REALTIME loops a fixture to the target. */
 enum class DebugBenchmarkMode { FAST, REALTIME }
 
 data class DebugBenchmarkUiState(
@@ -66,9 +69,8 @@ data class DebugBenchmarkUiState(
 )
 
 /**
- * The complete Debug file-import owner.  It is deliberately not exported: only the debug
- * activity accepts an automation intent, persists a user-selected URI grant, then starts this
- * foreground service. Audio exists only in the decoder and this bounded eight-frame queue.
+ * Owns complete class recording imports and Debug benchmarks. The internal activity persists
+ * a user-selected URI grant before starting this non-exported foreground service. Audio exists only in the decoder and this bounded eight-frame queue.
  */
 class DebugBenchmarkService : Service() {
     companion object {
@@ -93,7 +95,11 @@ class DebugBenchmarkService : Service() {
         val state = _state.asStateFlow()
 
         fun start(context: Context, uri: Uri, mode: DebugBenchmarkMode, targetMinutes: Int) {
-            require(mode == DebugBenchmarkMode.FAST || targetMinutes in allowedTargetMinutes)
+            require(mode == DebugBenchmarkMode.FAST || (BuildConfig.DEBUG && targetMinutes in allowedTargetMinutes))
+            check(RecordingService.state.value.sessionId == null) {
+                tr("请先结束正在记录的课堂", "End the current class first")
+            }
+            check(!_state.value.running) { tr("已有录音正在导入", "A recording import is already running") }
             val intent = Intent(context, DebugBenchmarkService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_URI, uri)
@@ -158,7 +164,7 @@ class DebugBenchmarkService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> if (!running.get()) begin(intent) else {
-                _state.value = _state.value.copy(error = tr("已有 Benchmark 正在运行", "A benchmark is already running"))
+                _state.value = _state.value.copy(error = tr("已有录音正在导入", "A recording import is already running"))
             }
             ACTION_STOP -> requestFinish(FinishReason.STOPPED, tr("用户停止", "Stopped by user"))
             ACTION_CANCEL -> requestFinish(FinishReason.CANCELLED, tr("用户取消", "Cancelled by user"))
@@ -168,14 +174,19 @@ class DebugBenchmarkService : Service() {
 
     @Suppress("DEPRECATION")
     private fun begin(intent: Intent) {
+        if (RecordingService.state.value.sessionId != null) {
+            _state.value = DebugBenchmarkUiState(error = tr("请先结束正在记录的课堂", "End the current class first"))
+            stopSelf()
+            return
+        }
         val uri = intent.getParcelableExtra<Uri>(EXTRA_URI)
         val selectedMode = intent.getStringExtra(EXTRA_MODE)
             ?.let { runCatching { DebugBenchmarkMode.valueOf(it) }.getOrNull() }
         val minutes = intent.getIntExtra(EXTRA_TARGET_MINUTES, 10)
-        if (uri == null || selectedMode == null ||
-            (selectedMode == DebugBenchmarkMode.REALTIME && minutes !in allowedTargetMinutes)
+        if (uri?.scheme != "content" || selectedMode == null ||
+            (selectedMode == DebugBenchmarkMode.REALTIME && (!BuildConfig.DEBUG || minutes !in allowedTargetMinutes))
         ) {
-            _state.value = DebugBenchmarkUiState(status = tr("无法启动", "Cannot start"), error = tr("Debug Benchmark 参数无效", "Invalid debug benchmark parameters"))
+            _state.value = DebugBenchmarkUiState(status = tr("无法启动", "Cannot start"), error = tr("导入录音参数无效", "Invalid recording import parameters"))
             stopSelf()
             return
         }
@@ -214,7 +225,7 @@ class DebugBenchmarkService : Service() {
             hotwordsEnabled = hotwordSettingsSnapshot.enabled,
         )
         createChannel()
-        startForeground(NOTIFICATION_ID, notification(tr("正在准备 Debug 音频 Benchmark", "Preparing debug audio benchmark")))
+        startForeground(NOTIFICATION_ID, notification(tr("正在准备导入课堂录音", "Preparing class recording import")))
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClassMemory:debug-benchmark")
             .apply { setReferenceCounted(false); acquire() }
@@ -225,7 +236,14 @@ class DebugBenchmarkService : Service() {
         try {
             val repository = (application as ClassMemoryApp).repository
             repository.begin(sessionId, startedAtMillis)
-            if (BuildConfig.ASR_COMPARISON) repository.updateMetadata(sessionId, tr("${actualModelLabel()} 音频测试", "${actualModelLabel()} audio test"), null)
+            val fileName = runCatching {
+                contentResolver.query(sourceUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull()
+            val title = fileName?.substringBeforeLast('.')?.trim()?.take(60)?.takeIf { it.isNotBlank() }
+                ?: tr("导入课堂录音", "Imported class recording")
+            repository.updateMetadata(sessionId, title, null)
             recognizer = LocalAsrSession.create(this, hotwordSettingsSnapshot) { event -> storeFinal(repository, event) }
             acceptingFinals.set(true)
             audioClockNanos = SystemClock.elapsedRealtimeNanos()
@@ -233,7 +251,16 @@ class DebugBenchmarkService : Service() {
             startMemorySampling()
             val queue = Channel<PcmFrame>(QUEUE_FRAMES)
             frames = queue
-            consumerJob = scope.launch { consume(queue) }
+            consumerJob = scope.launch {
+                try {
+                    consume(queue)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    metrics.error()
+                    requestFinish(FinishReason.FAILED, tr("识别或保存失败，可重新导入录音", "Recognition or saving failed; import the recording again"))
+                }
+            }
             produce(queue)
             queue.close()
             consumerJob?.join()
@@ -375,7 +402,7 @@ class DebugBenchmarkService : Service() {
         _state.value = _state.value.copy(
             inputSeconds = queuedSamples.get().toDouble() / LocalAsrSession.SAMPLE_RATE,
             finalCharacters = finalCharacters.get(),
-            status = if (mode == DebugBenchmarkMode.REALTIME) tr("按样本时钟导入中", "Importing in real time") else tr("不限速导入中", "Importing without pacing"),
+            status = if (mode == DebugBenchmarkMode.REALTIME) tr("按样本时钟导入中", "Importing in real time") else tr("正在识别课堂录音", "Transcribing class recording"),
         )
     }
 
@@ -404,7 +431,6 @@ class DebugBenchmarkService : Service() {
             val wallNanos = (SystemClock.elapsedRealtimeNanos() - pipelineStartedNanos).coerceAtLeast(0)
             val passed = reason == FinishReason.SUCCESS && metrics.hasTranscript() && !metrics.hasErrors()
             val outcome = if (reason == FinishReason.SUCCESS && !passed) "no_transcript" else reason.outcome
-            writeReports(outcome, passed, wallNanos)
             val persistedStatus = if (reason == FinishReason.SUCCESS && !passed) {
                 SessionStatus.failed
             } else {
@@ -416,21 +442,26 @@ class DebugBenchmarkService : Service() {
                 System.currentTimeMillis(),
                 audioDurationSec(queuedSamples.get(), LocalAsrSession.SAMPLE_RATE),
             )
+            val reportError = if (BuildConfig.DEBUG) runCatching { writeReports(outcome, passed, wallNanos) }.exceptionOrNull() else null
             _state.value = _state.value.copy(
-                running = false,
-                status = if (passed) tr("完成", "Complete") else tr("未通过：$outcome", "Failed: $outcome"),
-                error = message ?: if (passed) null else tr("Benchmark 未产生有效最终转写或未完整完成", "Benchmark produced no valid final transcript or did not complete"),
+                status = if (passed) tr("已保存到历史课堂", "Saved to class history") else tr("导入已结束：$outcome", "Import ended: $outcome"),
+                error = message ?: if (passed) {
+                    if (reportError != null) tr("课堂已保存，测试报告导出失败", "Class saved, but test report export failed") else null
+                } else tr("录音未完整导入，已保存成功识别的文字；可重新选择文件导入。", "Import did not complete. Confirmed text is saved; choose the file to import again."),
                 inputSeconds = queuedSamples.get().toDouble() / LocalAsrSession.SAMPLE_RATE,
                 finalCharacters = finalCharacters.get(),
-                textReportPath = reportTextFile().absolutePath,
-                jsonReportPath = reportJsonFile().absolutePath,
+                textReportPath = if (BuildConfig.DEBUG && reportError == null) reportTextFile().absolutePath else null,
+                jsonReportPath = if (BuildConfig.DEBUG && reportError == null) reportJsonFile().absolutePath else null,
             )
         } catch (_: Throwable) {
             metrics.error()
-            _state.value = _state.value.copy(running = false, status = tr("收尾失败", "Finalization failed"), error = tr("Benchmark 收尾或报告导出失败", "Benchmark finalization or report export failed"))
+            runCatching {
+                (application as ClassMemoryApp).repository.finish(sessionId, SessionStatus.failed, System.currentTimeMillis(), audioDurationSec(completedSamples.get(), LocalAsrSession.SAMPLE_RATE))
+            }
+            _state.value = _state.value.copy(status = tr("收尾失败", "Finalization failed"), error = tr("导入未完成，已保存成功识别的文字", "Import incomplete; confirmed text has been saved"))
         } finally {
             memoryJob?.cancelAndJoin()
-            recognizer?.close()
+            runCatching { recognizer?.close() }
             recognizer = null
             frames?.close()
             wakeLock?.let { if (it.isHeld) it.release() }
@@ -439,6 +470,7 @@ class DebugBenchmarkService : Service() {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             scope.cancel()
+            _state.value = _state.value.copy(running = false)
         }
     }
 
@@ -510,15 +542,17 @@ class DebugBenchmarkService : Service() {
 
     private fun createChannel() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, tr("Debug ASR Benchmark", "Debug ASR benchmark"), NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, tr("课堂录音导入", "Class recording import"), NotificationManager.IMPORTANCE_LOW),
         )
     }
 
     // Keep the platform notification type explicit in the generated Java stub.
     private fun notification(text: String): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-        .setContentTitle(tr("Debug 音频 Benchmark", "Debug audio benchmark"))
+        .setContentTitle(tr("正在导入课堂录音", "Importing class recording"))
         .setContentText(text)
+        .setContentIntent(PendingIntent.getActivity(this, 0,
+            Intent(this, DebugBenchmarkActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         .setOngoing(true)
         .build()
 

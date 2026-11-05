@@ -1,6 +1,7 @@
 package com.classmemory.app.i18n
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,21 +18,31 @@ object AppLanguage {
         get() = english
 
     fun initialize(context: Context) {
+        initialize {
+            context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        }
+    }
+
+    internal fun initialize(preferences: () -> SharedPreferences) {
         english = runCatching {
-            context.applicationContext
-                .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                .getBoolean(ENGLISH_KEY, true)
+            preferences().getBoolean(ENGLISH_KEY, true)
         }.getOrDefault(true)
         applyDefaultLocale()
     }
 
-    fun toggle(context: Context) {
-        english = !english
-        context.applicationContext
-            .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    fun selectEnglish(context: Context, selected: Boolean) {
+        selectEnglish(
+            context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE),
+            selected,
+        )
+    }
+
+    internal fun selectEnglish(preferences: SharedPreferences, selected: Boolean) {
+        preferences
             .edit()
-            .putBoolean(ENGLISH_KEY, english)
+            .putBoolean(ENGLISH_KEY, selected)
             .apply()
+        english = selected
         applyDefaultLocale()
     }
 
