@@ -1,6 +1,6 @@
 # 板书辅助复盘 / Board-assisted review
 
-Included in the locally built OPC `0.4.0-opc.6` preview, alongside the topic directory and after-class practice. It has not been installed on the phone or published to GitHub in this delivery. See CURRENT.md for validation and delivery status.
+Included since the locally built and installed OPC `0.4.0-opc.6` preview, alongside the topic directory and after-class practice. Newer source changes and local builds are tracked in CURRENT.md; these local APKs have not been published to GitHub.
 
 ## 使用方式
 

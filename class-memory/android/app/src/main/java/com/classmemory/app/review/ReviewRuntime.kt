@@ -97,8 +97,10 @@ class ReviewRuntime private constructor(val store: ReviewStore, private val repo
         check(matches(current)) { "内容已变更，请先更新复习方案" }
         if (current.exercises.isNotEmpty()) return@withLock current
         val outline = requireNotNull(current.outline); check(current.plan != null)
-        val drafts = gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).generateExercises(current.input, outline, outline.topics.map { current.units.getValue(it.id) })
-        require(drafts.size in 1..5)
+        val units = outline.topics.map { current.units.getValue(it.id) }
+        check(reviewExerciseTargetCount(units.size) > 0) { "暂无知识块，无法生成练习 / No learning units available for exercises" }
+        val drafts = gatewayFactory(connection).withPhotoAnalyses(current.photoAnalyses.values.toList()).generateExercises(current.input, outline, units)
+        validateNewExerciseMix(drafts, units.size)
         val exercises = drafts.map { ReviewExercise(UUID.randomUUID().toString(), it.unitId, it.kind, it.question, it.options) }
         check(matches(current)) { "内容已变更，请先更新复习方案" }
         val next = current.copy(exercises = exercises, updatedAt = System.currentTimeMillis())

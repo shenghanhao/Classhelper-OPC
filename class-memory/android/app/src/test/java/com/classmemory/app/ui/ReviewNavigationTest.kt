@@ -36,4 +36,29 @@ class ReviewNavigationTest {
         assertEquals(listOf("header", "actions", "outline", "unit:b", "whole-class-questions", "exercises"), reviewListKeys(partial))
         assertEquals(2, reviewUnitIndex(partial.copy(outline = null), "b"))
     }
+
+    @Test
+    fun independentQuestionRowsKeepDirectoryAndPracticeIndexesCorrect() {
+        val first = ReviewQaTurn("第一问", "回答", id = "turn-a")
+        val second = ReviewQaTurn("第二问", "回答", id = "turn-b")
+        val whole = ReviewQaTurn("全课问题", "回答", id = "whole")
+        val run = ReviewRun(input, outline = outline, units = linkedMapOf("a" to unit("a"), "b" to unit("b")),
+            qaThreads = listOf(ReviewQaThread("a-thread", "a", listOf(first, second)), ReviewQaThread("whole-thread", null, listOf(whole))), updatedAt = 1L)
+        val keys = reviewListKeys(run)
+        assertEquals(3, reviewUnitIndex(run, "a"))
+        assertEquals(6, reviewUnitIndex(run, "b"))
+        assertEquals(reviewQuestionKey(run, ReviewQuestionEntry("a-thread", first)), keys[4])
+        assertEquals(reviewQuestionKey(run, ReviewQuestionEntry("whole-thread", whole)), keys[8])
+        assertEquals(9, reviewExerciseIndex(run))
+        assertEquals(keys.size, keys.distinct().size)
+    }
+
+    @Test
+    fun disclosureIdentitySeparatesSnapshotThreadTurnAndExercise() {
+        val original = reviewDisclosureKey("snapshot", "question", "a:b", "c")
+        assertNotEquals(original, reviewDisclosureKey("snapshot", "question", "a", "b:c"))
+        assertNotEquals(original, reviewDisclosureKey("other-snapshot", "question", "a:b", "c"))
+        assertNotEquals(original, reviewDisclosureKey("snapshot", "exercise", "a:b", "c"))
+        assertEquals(original, reviewDisclosureKey("snapshot", "question", "a:b", "c"))
+    }
 }

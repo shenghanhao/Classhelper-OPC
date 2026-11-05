@@ -36,7 +36,8 @@ internal fun ReviewExerciseHeader(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(tr("课后练习", "After-class practice"), style = MaterialTheme.typography.titleLarge)
         if (run.exercises.isEmpty()) {
-            Text(tr("生成 1–5 道练习，用自己的文字说明答案和思路。", "Generate 1–5 questions and explain your answers in your own words."))
+            val count = reviewExerciseTargetCount(run.units.size)
+            Text(tr("根据本课知识量生成约 $count 道练习，选择题与简答题搭配，用自己的文字说明答案和思路。", "Generate about $count questions based on this class, mixing multiple-choice and short answers. Explain your answers in your own words."))
             if (run.plan == null) Text(tr("完成课堂复盘后可生成练习。", "Complete the classroom review to generate practice questions."))
             Button(
                 enabled = current && run.plan != null && connection.isConfigured() && connection.mode == ReviewConnectionMode.DIRECT_DEEPSEEK && !busy,
@@ -72,6 +73,7 @@ internal fun ReviewExerciseCard(
     onCancel: () -> Unit,
 ) {
     val draftKey = "${run.input.sourceHash}:${exercise.id}"
+    var expanded by rememberSaveable(reviewDisclosureKey(reviewSnapshotKey(run), "exercise", exercise.id)) { mutableStateOf(true) }
     var answer by remember(draftKey) { mutableStateOf("") }
     var loaded by remember(draftKey) { mutableStateOf(false) }
     var draftError by remember(draftKey) { mutableStateOf<String?>(null) }
@@ -102,8 +104,10 @@ internal fun ReviewExerciseCard(
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ReviewExerciseQuestion(exercise, number)
-            ReviewExerciseAttempts(exercise, onRetry = { attempt ->
+            ReviewDisclosureHeader(exerciseTitle(exercise, number), expanded) { expanded = !expanded }
+            if (expanded) {
+            ReviewExerciseQuestion(exercise)
+            ReviewExerciseAttempts(reviewSnapshotKey(run), exercise, onRetry = { attempt ->
                 retryId = attempt.id
                 confirmingAnswer = attempt.answer
             }, retryEnabled = enabled && !busy)
@@ -126,7 +130,7 @@ internal fun ReviewExerciseCard(
                 minLines = 3,
                 maxLines = 8,
                 label = { Text(tr("我的作答", "My answer")) },
-                placeholder = { Text(if (exercise.kind == "MCQ") tr("输入选项及理由，也可以写出完整思路。", "Enter your option and reasons, or explain your full approach.") else tr("写出答案和思考过程。", "Write your answer and reasoning.")) },
+                placeholder = { Text(if (exercise.kind == "MCQ") tr("为什么选它、其他选项为什么不对？请写出你的判断和理由。", "Why choose it, and why are the other options wrong? Explain your reasoning.") else tr("写出答案和思考过程。", "Write your answer and reasoning.")) },
             )
             draftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (busy) TextButton(onClick = onCancel) { Text(tr("取消当前请求", "Cancel current request")) }
@@ -135,6 +139,7 @@ internal fun ReviewExerciseCard(
                 enabled = enabled && !busy && loaded && canSubmitExerciseAnswer(exercise, answer),
                 onClick = { retryId = null; confirmingAnswer = answer.trim() },
             ) { Text(tr("提交作答", "Submit answer")) }
+            }
         }
     }
     confirmingAnswer?.let { submitted ->
@@ -148,32 +153,37 @@ internal fun ReviewExerciseCard(
 }
 
 @Composable
-internal fun ReviewExerciseHistory(exercise: ReviewExercise, number: Int) {
+internal fun ReviewExerciseHistory(snapshotKey: String, exercise: ReviewExercise, number: Int) {
+    var expanded by rememberSaveable(reviewDisclosureKey(snapshotKey, "exercise", exercise.id)) { mutableStateOf(true) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ReviewExerciseQuestion(exercise, number)
-            ReviewExerciseAttempts(exercise)
+            ReviewDisclosureHeader(exerciseTitle(exercise, number), expanded) { expanded = !expanded }
+            if (expanded) {
+                ReviewExerciseQuestion(exercise)
+                ReviewExerciseAttempts(snapshotKey, exercise)
+            }
         }
     }
 }
 
 @Composable
-private fun ReviewExerciseQuestion(exercise: ReviewExercise, number: Int) {
-    Text(
-        (if (exercise.parentId == null) tr("练习", "Question") else tr("针对练习", "Follow-up")) + " $number",
-        style = MaterialTheme.typography.titleMedium,
-    )
-    ReviewContent(exercise.question)
-    exercise.options.forEach { option -> ReviewContent(option) }
+private fun exerciseTitle(exercise: ReviewExercise, number: Int): String =
+    (if (exercise.parentId == null) tr("练习", "Question") else tr("针对练习", "Follow-up")) + " $number"
+
+@Composable
+private fun ReviewExerciseQuestion(exercise: ReviewExercise) {
+    val content = remember(exercise.question, exercise.options) { (listOf(exercise.question) + exercise.options).joinToString("\n\n") }
+    ReviewContent(content)
 }
 
 @Composable
 private fun ReviewExerciseAttempts(
+    snapshotKey: String,
     exercise: ReviewExercise,
     onRetry: ((ReviewExerciseAttempt) -> Unit)? = null,
     retryEnabled: Boolean = false,
 ) {
-    var showEarlier by rememberSaveable(exercise.id) { mutableStateOf(false) }
+    var showEarlier by rememberSaveable(reviewDisclosureKey(snapshotKey, "attempts", exercise.id)) { mutableStateOf(false) }
     if (exercise.attempts.size > 1) TextButton(onClick = { showEarlier = !showEarlier }) {
         Text(if (showEarlier) tr("收起历史作答", "Hide earlier answers") else tr("查看历史作答", "Show earlier answers"))
     }

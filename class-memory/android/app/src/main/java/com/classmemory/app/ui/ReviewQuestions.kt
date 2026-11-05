@@ -4,8 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,6 +19,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import kotlinx.coroutines.Job
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.classmemory.app.i18n.tr
@@ -27,16 +30,30 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun ReviewQuestions(threads: List<ReviewQaThread>, wholeClass: Boolean = false) {
-    if (threads.isEmpty()) return
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    Column {
-        TextButton(onClick = { expanded = !expanded }) { Text(if (wholeClass) tr("全课问答", "Whole-class questions") else tr("展开 / 收起问答", "Show / hide questions")) }
-        if (expanded) threads.forEach { thread -> thread.turns.forEach { turn ->
-            Text(tr("问：", "Q: ") + turn.question, style = MaterialTheme.typography.titleSmall)
-            if (turn.status == "answered") ReviewContent(turn.answerMarkdown) else Text(if (turn.status == "pending") tr("待处理", "Pending") else tr("处理失败", "Failed"))
-            if (turn.clarificationNeeded) Text(tr("需要进一步澄清", "Further clarification needed"))
-        } }
+internal fun ReviewQuestionCard(snapshotKey: String, threadId: String, turn: ReviewQaTurn, actions: (@Composable () -> Unit)? = null) {
+    val disclosure = reviewDisclosureKey(snapshotKey, "question", threadId, turn.id)
+    var expanded by rememberSaveable(disclosure) { mutableStateOf(true) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReviewDisclosureHeader(tr("问：", "Q: ") + turn.question, expanded) { expanded = !expanded }
+            if (expanded) {
+                if (turn.status == "answered") ReviewContent(turn.answerMarkdown) else Text(if (turn.status == "pending") tr("待处理", "Pending") else tr("处理失败", "Failed"))
+                if (turn.clarificationNeeded) Text(tr("需要进一步澄清", "Further clarification needed"))
+                actions?.invoke()
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ReviewDisclosureHeader(title: String, expanded: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+        stateDescription = if (expanded) tr("已展开", "Expanded") else tr("已收起", "Collapsed")
+    }, contentPadding = PaddingValues(0.dp)) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis)
+        Text(if (expanded) "⌃" else "⌄", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -61,17 +78,19 @@ internal fun ReviewQuestionDialog(run: ReviewRun, connection: ReviewConnection, 
                 Row(Modifier.fillMaxWidth()) {
                     TextButton(onClick = { target = null; threadId = null }) { Text(if (target == null) "✓ " + tr("全课", "Whole class") else tr("全课", "Whole class")) }
                 }
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    units.forEach { unit -> TextButton(onClick = { target = unit.id; threadId = null }) { Text((if (target == unit.id) "✓ " else "") + unit.title) } }
+                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(units, key = { "scope:${it.id}" }) { unit -> TextButton(onClick = { target = unit.id; threadId = null }) { Text((if (target == unit.id) "✓ " else "") + unit.title) } }
                     localRun.qaThreads.filter { it.targetUnitId == target }.forEach { thread ->
-                        thread.turns.forEach { turn ->
-                            Text(tr("问：", "Q: ") + turn.question)
-                            if (turn.status == "answered") ReviewContent(turn.answerMarkdown) else {
-                                Text(if (turn.status == "pending") tr("待处理", "Pending") else tr("处理失败", "Failed"))
-                                TextButton(enabled = !pending, onClick = { threadId = thread.id; retryId = turn.id; question = turn.question; error = null }) { Text(tr("重试此问题", "Retry this question")) }
+                        items(thread.turns, key = { reviewDisclosureKey(reviewSnapshotKey(localRun), "question", thread.id, it.id) }) { turn ->
+                            ReviewQuestionCard(reviewSnapshotKey(localRun), thread.id, turn) {
+                                if (turn.status != "answered") {
+                                    TextButton(enabled = !pending, onClick = { threadId = thread.id; retryId = turn.id; question = turn.question; error = null }) { Text(tr("重试此问题", "Retry this question")) }
+                                }
                             }
                         }
-                        TextButton(onClick = { threadId = thread.id }) { Text(if (threadId == thread.id) tr("已选择追问", "Follow-up selected") else tr("追问此对话", "Follow up")) }
+                        item(key = reviewDisclosureKey(reviewSnapshotKey(localRun), "follow-up", thread.id)) {
+                            TextButton(onClick = { threadId = thread.id }) { Text(if (threadId == thread.id) tr("已选择追问", "Follow-up selected") else tr("追问此对话", "Follow up")) }
+                        }
                     }
                 }
                 OutlinedTextField(value = question, onValueChange = { question = it; retryId = null; error = null }, label = { Text(tr("输入问题", "Your question")) }, modifier = Modifier.fillMaxWidth())

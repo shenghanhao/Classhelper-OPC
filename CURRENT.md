@@ -2,9 +2,24 @@
 
 工作分支 `codex/opc-qa-graph`，基于公开分支 `codex/opc-public` 的 `0485f4b`。从此分支打开仓库可以同时修改 Android 客户端和配套服务。向默认分支提交更改走 Pull Request，由维护者审核。
 
-## 2026-11-05：课后练习，本地 APK 已生成
+## 2026-11-05：0.4.1 复习页与动态练习
 
-当前交付为 `0.4.0-opc.6 / 10006`，代码基线 `5da1555`，回退分支 `codex/checkpoint-before-review-exercises`。本轮仅生成本地 OPC 安装包，没有安装手机、没有推送源码或更新 GitHub Release，也没有真实模型调用。手机最后已确认安装的仍是 `0.3.3-opc.5`；GitHub 下载仍为 v0.3.1。
+基线 `1748c75`，回退分支 `codex/checkpoint-before-review-scroll-20261105`。本轮只交付源码和本地 APK；不上传 APK 或课堂资料到 GitHub。用户在执行期间明确正在使用手机，因此暂停滑动验收与覆盖安装，手机最后确认仍为 `0.4.0-opc.6 / 10006`。GitHub 最新公开 Release 仍为 v0.3.1；先前 v0.4.0 上传未完成，不能将草稿当作可下载安装版本。
+
+- 正文 HTML 按内容和显示配置复用；采用页面内有界排版缓存、AndroidView 复用和稳定测高，减少滚回已读内容时的 Markdown/公式重复处理。缓存仅在内存，保留原有净化和网络隔离。连接设置读取移出界面重绘路径。
+- 知识块下面的 QA 作为独立列表项加载，目录、图谱和练习定位复用同步的行索引。右下角为「↑ / 目录 / ?」；新旧知识块 QA、全课 QA 和每道练习默认展开，可独立折叠，折叠不清空草稿。
+- 1–2 个知识块生成 2–3 题，3–4 个生成 3–4 题，5–7 个生成 5–6 题，8 个以上生成 7–8 题。首选偶数题，选择/简答数量最多相差一道；旧题保持原样。
+- 选择题要求说明选择理由及其他选项的错误；补题围绕薄弱知识换情境、辨错、反例或题型，仍限制每道原题最多一个补题，补题不再继续追加。
+
+实现入口：`ui/ReviewContent.kt`、`ReviewRenderCache.kt`、`ReviewScreen.kt`、`ReviewNavigation.kt`、`ReviewQuestions.kt`、`ReviewExercises.kt`，动态规则位于 `review/ReviewExercises.kt` 和 `DirectDeepSeekGateway.kt`。无 Room 迁移、无新增依赖，不修改录音或本地 ASR。
+
+验证：ReviewExercisesTest、DirectDeepSeekGatewayTest、ReviewNavigationTest、ReviewExerciseUiTest、ReviewRenderCacheTest、ReviewQaGraphTest 共 **36/36 一次通过**；`:app:assembleOpc` 成功。安装包版本 `0.4.1-opc.7 / 10007`，应用 ID 保持 `com.classmemory.app.publish.opc2026`，证书与 0.4.0 一致；`allowBackup=false`，没有测试 CA。交付文件为本机私有 `releases/20261105-review-scroll/ClassMemory-OPC-0.4.1.apk`，同目录保存校验文件和验收日志。SHA-256：`941dc9c502403535f619120471311b1a463a22d61cfe52cf9a63dc8cc684c726`。
+
+没有有效的手机滑动基线，不声明改善百分比；本轮未调用真实 DeepSeek，也未安装手机。用户后续方便时，从同一份已生成的长复盘检查上下滑动、公式与表格、目录跳转、回顶部和折叠草稿保留，再确认实际手感。
+
+## 2026-11-05：0.4.0 课后练习（历史记录）
+
+该轮交付为 `0.4.0-opc.6 / 10006`，代码基线 `5da1555`，回退分支 `codex/checkpoint-before-review-exercises`。随后已按用户要求覆盖安装到手机并冷启动成功；源码已推送。用户取消了 APK 和测试版资料的上传，GitHub 下载仍为 v0.3.1。未调用真实模型。
 
 - 复盘页末尾新增课后练习，右侧目录可直接跳转。生成 1–5 道选择题或简答题，所有题目都使用一个文字框作答，选择题要求同时说明理由。
 - DeepSeek 按完整课堂和正确知识评阅，反馈判断、分析和正确思路。每次完成的作答与评阅保存进对应知识块的 QA。失败、取消后可按原作答 ID 重试；独立草稿持久化，重试不会覆盖新草稿。

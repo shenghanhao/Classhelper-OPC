@@ -9,6 +9,24 @@ data class ReviewExerciseNotice(val id: String, val exerciseId: String, val cons
 data class ReviewExerciseDraft(val unitId: String, val kind: String, val question: String, val options: List<String>)
 data class ReviewExerciseGrade(val verdict: String, val feedback: String, val reasoning: String, val sourceIds: List<String>, val followUp: ReviewExerciseDraft?)
 
+fun reviewExerciseTargetCount(unitCount: Int): Int {
+    require(unitCount >= 0)
+    return when (unitCount) { 0 -> 0; in 1..2 -> 2; in 3..4 -> 4; in 5..7 -> 6; else -> 8 }
+}
+
+fun reviewExerciseCountRange(unitCount: Int): IntRange = when (reviewExerciseTargetCount(unitCount)) {
+    0 -> 0..0
+    2 -> 2..3
+    4 -> 3..4
+    6 -> 5..6
+    else -> 7..8
+}
+
+internal fun validateNewExerciseMix(drafts: List<ReviewExerciseDraft>, unitCount: Int) {
+    val mcq = drafts.count { it.kind == "MCQ" }; val short = drafts.count { it.kind == "SHORT" }
+    require(unitCount > 0 && drafts.size in reviewExerciseCountRange(unitCount) && mcq > 0 && short > 0 && mcq + short == drafts.size && kotlin.math.abs(mcq - short) <= 1) { "Unexpected exercise count or mix" }
+}
+
 internal object ReviewExerciseCodec {
     private fun array(values: Iterable<*>): JSONArray = JSONArray().also { a -> values.forEach { a.put(it) } }
     private fun strings(a: JSONArray): List<String> = (0 until a.length()).map { a.get(it) as? String ?: error("Invalid string") }
@@ -23,7 +41,7 @@ internal object ReviewExerciseCodec {
     fun notices(a: JSONArray): List<ReviewExerciseNotice> = (0 until a.length()).map { a.getJSONObject(it).let { x -> ReviewExerciseNotice(str(x, "id"), str(x, "exerciseId"), x.get("consumed") as? Boolean ?: error("Invalid notice")) } }
     fun validate(run: ReviewRun) {
         val all = run.exercises; val roots = all.filter { it.parentId == null }; val children = all.filter { it.parentId != null }
-        require(roots.size <= 5 && all.map { it.id }.distinct().size == all.size && all.all { it.id.isNotBlank() && it.unitId in run.units })
+        require(roots.size <= 8 && all.map { it.id }.distinct().size == all.size && all.all { it.id.isNotBlank() && it.unitId in run.units })
         fun normalize(value: String) = value.trim().lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " ")
         require(all.map { listOf(it.unitId, it.kind, normalize(it.question)) + it.options.map(::normalize) }.distinct().size == all.size)
         require(children.map { it.parentId }.distinct().size == children.size)

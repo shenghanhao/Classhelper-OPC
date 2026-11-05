@@ -14,6 +14,10 @@
 
 For after-class review, the current source supports **Review service settings → Connect to DeepSeek on this phone**. Enter your own API key; no computer or personal server is required. Android Keystore protects the saved key, and requests are billed to your DeepSeek account. Choose deepseek-flash or deepseek-v4-pro. Open a finished class to generate explanations, check off review rounds, ask classroom/topic questions and view a knowledge map. Default analysis sends only previewed text, course context and notes. The [board-assisted review](docs/REVIEW_BOARD_PHOTOS.md) lets users explicitly select current-class images for a separate vision stage; audio is never uploaded. Retry resumes missing stages. A [self-hosted HTTPS service](class-memory/study-agent-server/README.md) remains optional. The local v0.4.0 OPC APK includes board assistance, the topic directory and [after-class practice](docs/REVIEW_EXERCISES.md): typed answers, DeepSeek feedback, bounded follow-ups and topic QA records. Targeted local tests passed; live model quality and device behavior remain unverified for these additions. The GitHub download above is still v0.3.1.
 
+当前开发分支的 0.4.1 增加复习正文排版复用、逐题折叠，以及右下角「↑ / 目录 / ?」导航。新练习按知识块数量生成 2–8 道，选择题/简答题数量最多相差一道，并要求说明各选项理由。本轮仅同步源码、提供本地安装包，不向 GitHub 上传 APK 或课堂资料；实际手机滑动表现待后续验收。详见 [当前交接记录](CURRENT.md)。
+
+Development version 0.4.1 adds reusable review rendering, individually collapsible questions and bottom-right **↑ / Index / ?** navigation. New practice sets contain 2–8 questions based on topic count, with multiple-choice and short-answer counts differing by at most one. Multiple-choice answers must explain both the selected and rejected options. This delivery publishes source changes only; APKs and classroom data are not uploaded to GitHub. On-device scrolling remains to be verified; see [CURRENT.md](CURRENT.md).
+
 ## English — how to use
 
 An experimental local Android transcription app. It saves final text, your questions/comments and explicitly captured photos, **not microphone audio files**. No account, online ASR or AI summarization is required.

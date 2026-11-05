@@ -11,6 +11,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -19,13 +21,31 @@ import com.classmemory.app.i18n.tr
 import com.classmemory.app.repository.SessionRepository
 import com.classmemory.app.review.*
 import com.classmemory.app.ui.theme.ClassMemoryColors
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.awaitCancellation
 
 @Composable
 fun ReviewScreen(
+    repo: SessionRepository,
+    runtime: ReviewRuntime,
+    sessionId: String,
+    onBack: () -> Unit,
+    onSource: (ReviewSource) -> Unit,
+    onSettings: () -> Unit,
+) = ReviewRenderingScope(sessionId) {
+    ReviewScreenContent(repo, runtime, sessionId, onBack, onSource, onSettings)
+}
+
+@Composable
+private fun ReviewScreenContent(
     repo: SessionRepository,
     runtime: ReviewRuntime,
     sessionId: String,
@@ -52,12 +72,21 @@ fun ReviewScreen(
     var showHistory by remember { mutableStateOf(false) }
     var boardPhotos by remember { mutableStateOf<List<ReviewPhotoRef>>(emptyList()) }
     var questionPanel by remember { mutableStateOf(false) }
+    var directoryOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
     var exerciseBusy by remember(sessionId) { mutableStateOf(false) }
     var exerciseJob by remember(sessionId) { mutableStateOf<Job?>(null) }
     var exerciseError by remember(sessionId) { mutableStateOf<String?>(null) }
-    val connection = ReviewConnectionPreferences.load(context)
+    var connection by remember(context) { mutableStateOf(ReviewConnection()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(context, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Keystore work happens once on entry/resume, never in scrolling composition.
+            connection = withContext(Dispatchers.IO) { ReviewConnectionPreferences.load(context) }
+            awaitCancellation()
+        }
+    }
     val running = progress.containsKey(sessionId)
     val stale = current == false
     LaunchedEffect(sessionId, changes, language) {
@@ -82,7 +111,10 @@ fun ReviewScreen(
         finally { loaded = true }
     }
     val shown = run
-    val orderedUnits = shown?.let(::orderedReviewUnits).orEmpty()
+    val orderedUnits = remember(shown?.outline, shown?.units) { shown?.let(::orderedReviewUnits).orEmpty() }
+    val questionsByUnit = remember(shown?.qaThreads) { shown?.qaThreads.orEmpty().groupBy { it.targetUnitId } }
+    val sourcesById = remember(shown?.input?.sources) { shown?.input?.sources.orEmpty().associateBy { it.id } }
+    val photosById = remember(shown?.input?.photos) { shown?.input?.photos.orEmpty().associateBy { it.id } }
     fun jumpToUnit(id: String) {
         scope.launch {
             reviewUnitIndex(run, id)?.let { listState.animateScrollToItem(it) }
@@ -155,7 +187,15 @@ fun ReviewScreen(
         prepareConsent(include, retry = shown.takeIf { include })
     }
     Scaffold(containerColor = ClassMemoryColors.current.background, floatingActionButton = {
-        if (shown != null) FloatingActionButton(onClick = { questionPanel = true }) { Text("?", style = MaterialTheme.typography.titleLarge) }
+        if (shown != null) Column(Modifier.imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            FilledTonalButton(onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                modifier = Modifier.size(52.dp).semantics { contentDescription = tr("回到顶部", "Back to top") },
+                contentPadding = PaddingValues(0.dp), shape = MaterialTheme.shapes.medium) { Text("↑", style = MaterialTheme.typography.titleLarge) }
+            FilledTonalButton(onClick = { directoryOpen = !directoryOpen },
+                modifier = Modifier.size(52.dp).semantics { contentDescription = tr("打开知识目录", "Open topic index") },
+                contentPadding = PaddingValues(2.dp), shape = MaterialTheme.shapes.medium) { Text(tr("目录", "Index"), style = MaterialTheme.typography.labelMedium) }
+            FloatingActionButton(onClick = { questionPanel = true }, modifier = Modifier.size(56.dp).semantics { contentDescription = tr("课堂问答", "Class questions") }) { Text("?", style = MaterialTheme.typography.titleLarge) }
+        }
     }, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text(tr("返回", "Back")) }
@@ -170,8 +210,8 @@ fun ReviewScreen(
             }
             return@Scaffold
         }
-        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 232.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item(key = "header") {
                 Text(shown?.input?.title ?: prepared?.title ?: tr("课堂复习资料", "Classroom review material"), style = MaterialTheme.typography.headlineSmall)
                 if (history.isNotEmpty()) TextButton(onClick = { showHistory = true }) { Text(tr("查看旧版复习资料与问答", "View earlier review material and questions")) }
@@ -210,7 +250,7 @@ fun ReviewScreen(
                                 jumpToUnit(id)
                             })
                             orderedUnits.forEach { unit ->
-                                val first = unit.sourceIds.mapNotNull { id -> shown.input.sources.find { it.id == id && it.isCurrent } }.minByOrNull { it.startMs }
+                                val first = unit.sourceIds.mapNotNull { sourcesById[it]?.takeIf { source -> source.isCurrent } }.minByOrNull { it.startMs }
                                 TextButton(onClick = { jumpToUnit(unit.id) }) {
                                     Text(listOfNotNull(first?.let { reviewTime(it.startMs) }, unit.title).joinToString(" · "))
                                 }
@@ -249,29 +289,38 @@ fun ReviewScreen(
                         }
                     }
                 }
-                items(orderedUnits, key = { "unit:${it.id}" }) { unit ->
+                orderedUnits.forEach { unit ->
+                item(key = "unit:${unit.id}", contentType = "knowledge") {
                     ReviewBlock(unit.title) {
                         if (unit.markdown.isNotBlank()) ReviewContent(unit.markdown) else {
                             ReviewContent(listOfNotNull(unit.explanation, unit.conditions.takeIf { it.isNotBlank() }, unit.classroomFocus, unit.example?.takeIf { it.isNotBlank() }).joinToString("\n\n"))
                         }
                         shown.unitVersions[unit.id]?.takeIf { it.isNotEmpty() }?.let { versions ->
-                            var showVersions by rememberSaveable(unit.id) { mutableStateOf(false) }
+                            var showVersions by rememberSaveable(reviewSnapshotKey(shown), unit.id) { mutableStateOf(false) }
                             TextButton(onClick = { showVersions = !showVersions }) { Text(tr("查看 / 收起旧版讲解", "Show / hide earlier explanations")) }
                             if (showVersions) versions.forEachIndexed { index, markdown ->
                                 Text(tr("旧版 ${index + 1}", "Earlier version ${index + 1}"), style = MaterialTheme.typography.titleSmall)
                                 ReviewContent(markdown)
                             }
                         }
-                        ReviewQuestions(shown.qaThreads.filter { it.targetUnitId == unit.id })
-                        val source = unit.sourceIds.mapNotNull { id -> shown.input.sources.find { it.id == id } }
+                        val source = unit.sourceIds.mapNotNull { sourcesById[it] }
                             .sortedWith(compareBy<ReviewSource>({ !it.isCurrent }, { it.startMs }, { it.sessionId }, { it.id })).firstOrNull()
                         source?.let { TextButton(onClick = { onSource(it) }) { Text(tr("索引到出处", "Open source")) } }
-                        val photos = unit.photoIds.mapNotNull { id -> shown.input.photos.find { it.id == id } }
+                        val photos = unit.photoIds.mapNotNull { photosById[it] }
                         if (photos.isNotEmpty()) TextButton(onClick = { boardPhotos = photos }) { Text(tr("查看板书", "View board")) }
 
                     }
                 }
-                item(key = "whole-class-questions") { ReviewQuestions(shown.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
+                items(reviewQuestions(questionsByUnit[unit.id].orEmpty(), unit.id), key = { reviewQuestionKey(shown, it) }, contentType = { "question" }) { question ->
+                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn)
+                }
+                }
+                item(key = "whole-class-questions") {
+                    if (!questionsByUnit[null].isNullOrEmpty()) Text(tr("全课问答", "Whole-class questions"), style = MaterialTheme.typography.titleMedium)
+                }
+                items(reviewQuestions(questionsByUnit[null].orEmpty(), null), key = { reviewQuestionKey(shown, it) }, contentType = { "question" }) { question ->
+                    ReviewQuestionCard(reviewSnapshotKey(shown), question.threadId, question.turn)
+                }
                 item(key = "exercises") {
                     ReviewExerciseHeader(
                         shown, connection, current == true && !running, exerciseBusy, exerciseError,
@@ -279,7 +328,7 @@ fun ReviewScreen(
                         onCancel = { exerciseJob?.cancel() },
                     )
                 }
-                items(shown.exercises, key = { "exercise:${it.id}" }) { exercise ->
+                items(shown.exercises, key = { "exercise:${it.id}" }, contentType = { "exercise" }) { exercise ->
                     ReviewExerciseCard(
                         shown, exercise, shown.exercises.indexOfFirst { it.id == exercise.id } + 1,
                         runtime, scope,
@@ -294,7 +343,8 @@ fun ReviewScreen(
         ReviewQuickDirectory(
             units = orderedUnits,
             maxHeight = (maxHeight * 0.55f).coerceAtMost(360.dp),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = 88.dp),
+            expanded = directoryOpen,
+            onDismiss = { directoryOpen = false },
             onSelect = ::jumpToUnit,
             onExercises = if (shown == null) null else ({ jumpToExercise() }),
         )
@@ -309,16 +359,23 @@ fun ReviewScreen(
                     history.forEachIndexed { version, old ->
                         item { Text(tr("旧版 ${version + 1} · ${old.input.today}", "Earlier version ${version + 1} · ${old.input.today}"), style = MaterialTheme.typography.titleMedium) }
                         val oldUnits = old.outline?.topics?.mapNotNull { old.units[it.id] } ?: old.units.values.toList()
-                        items(oldUnits, key = { "old:${old.input.sourceHash}:${it.id}" }) { unit ->
+                        oldUnits.forEach { unit ->
+                        item(key = "old:${old.input.sourceHash}:${unit.id}", contentType = "knowledge") {
                             ReviewBlock(unit.title) {
                                 ReviewContent(unit.markdown.ifBlank { listOfNotNull(unit.explanation, unit.conditions, unit.classroomFocus, unit.example).joinToString("\n\n") })
-                                ReviewQuestions(old.qaThreads.filter { it.targetUnitId == unit.id })
                             }
                         }
-                        item { ReviewQuestions(old.qaThreads.filter { it.targetUnitId == null }, wholeClass = true) }
+                        items(reviewQuestions(old.qaThreads, unit.id), key = { reviewQuestionKey(old, it) }, contentType = { "question" }) { question ->
+                            ReviewQuestionCard(reviewSnapshotKey(old), question.threadId, question.turn)
+                        }
+                        }
+                        if (old.qaThreads.any { it.targetUnitId == null }) item { Text(tr("全课问答", "Whole-class questions"), style = MaterialTheme.typography.titleMedium) }
+                        items(reviewQuestions(old.qaThreads, null), key = { reviewQuestionKey(old, it) }, contentType = { "question" }) { question ->
+                            ReviewQuestionCard(reviewSnapshotKey(old), question.threadId, question.turn)
+                        }
                         if (old.exercises.isNotEmpty()) item { Text(tr("课后练习", "After-class practice"), style = MaterialTheme.typography.titleMedium) }
                         items(old.exercises, key = { "old-exercise:${old.input.sourceHash}:${it.id}" }) { exercise ->
-                            ReviewExerciseHistory(exercise, old.exercises.indexOfFirst { it.id == exercise.id } + 1)
+                            ReviewExerciseHistory(reviewSnapshotKey(old), exercise, old.exercises.indexOfFirst { it.id == exercise.id } + 1)
                         }
                     }
                 }
@@ -330,7 +387,7 @@ fun ReviewScreen(
         ReviewConsent(input, connection.mode, photoConsent, onIncludePhotos = { include ->
             prepareConsent(include)
         }, onPreviewPhotos = { boardPhotos = it }, onDismiss = { consent = null }, onConfirm = {
-            runtime.start(input, ReviewConnectionPreferences.load(context))
+            runtime.start(input, connection)
             consent = null
         })
     }

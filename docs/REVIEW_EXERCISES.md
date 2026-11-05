@@ -4,12 +4,23 @@ Included in the locally built OPC `0.4.0-opc.6` preview. See [CURRENT.md](../CUR
 
 ## 使用方式
 
-完成课堂复盘后，滚动到页面末尾的「课后练习」，或通过右侧目录跳到这里。选择「生成课后练习」并确认发送后，DeepSeek 根据本课内容生成 1–5 道题，每题归属一个已有知识块。当前需要设置为「手机直连 DeepSeek」；旧自建代理不提供这组新接口。
+完成课堂复盘后，滚动到页面末尾的「课后练习」，或通过右下角「目录」跳到这里。选择「生成课后练习」并确认发送后，DeepSeek 按本课知识量生成题目，每题归属一个已有知识块。当前需要设置为「手机直连 DeepSeek」；旧自建代理不提供这组新接口。
 
-- 选择题列出选项，但没有单选按钮。在同一个「我的作答」框内输入选项和分析理由。
+自 0.4.1 起的生成规则如下；每批选择题和简答题都要存在，数量最多相差一道。首选偶数题以保持 1:1，同时接受范围内的合理奇数。既有题目不会因此重写。
+
+| 有效知识块 | 新题数量 | 首选数量 |
+| --- | --- | --- |
+| 1–2 | 2–3 | 2 |
+| 3–4 | 3–4 | 4 |
+| 5–7 | 5–6 | 6 |
+| 8 或更多 | 7–8 | 8 |
+
+没有知识块时不请求模型出题。每题和每条 QA 默认展开，可单独折叠；收起只隐藏正文，保留作答草稿和记录。
+
+- 选择题列出选项，但没有单选按钮。在同一个「我的作答」框内输入选项、为什么选择它，以及其他选项为什么不对。题干和评阅提示词都要求检查选择和排除理由。
 - 简答题也使用这个输入框，填写对知识点的理解和解题过程。文本长度没有应用侧截断，输入框可内部滚动。
 - 点击「提交作答」并确认后，DeepSeek 结合完整课堂、知识块、已保存的板书分析和学生作答评阅。结果包含正确、部分正确、错误或不清楚的判断，以及反馈和正确思路。提示词要求独立检查知识正确性，不能把转写错误当标准答案，也不能只凭选项碰巧正确就判为理解正确。
-- 对错误、部分正确或表述不清的回答，可在练习区末尾追加一道只针对当前薄弱知识的题。每道原题最多追加一次，追加题不再追加；正确答案不补题。不在后台连续推送题目。
+- 对错误、部分正确或表述不清的回答，可在练习区末尾追加一道只针对当前薄弱知识的题。提示词要求更换情境、辨错、反例、计算/解释或切换题型，不只是重复原题或换数字。每道原题最多追加一次，追加题不再追加；正确答案不补题。不在后台连续推送题目。
 - 新题保存后显示一次消息「DeepSeek 已追加一道针对练习，已放到末尾」，可点「查看」跳过去。已消费的提醒不会在重开后重复弹出；提醒不是系统推送。
 - 每次完成的评阅会把题目、学生答案、反馈和正确思路保存为对应知识块下面的一条 QA。多次不同作答保留各自记录，失败时可用原作答 ID 重试。重试旧答案不会覆盖正在编辑的新草稿。
 
@@ -31,6 +42,8 @@ Included in the locally built OPC `0.4.0-opc.6` preview. See [CURRENT.md](../CUR
 All exercise records are local to their review snapshot. Existing Markdown/Notebook classroom exports are unchanged by this task; practice QA is shown and stored in the review experience.
 
 ## Verification
+
+For the local 0.4.1 delivery, 36 tests passed across the exercise, direct-provider, QA, navigation, exercise-UI and rendering-cache suites. The count/mix boundaries and legacy five-question snapshots are covered. OPC assembly and signature verification passed; phone testing/installation was deferred at the user's request. No live model requests were made.
 
 On 2026-11-05, 31 targeted JVM tests passed across `ReviewExercisesTest`, `DirectDeepSeekGatewayTest`, `ReviewQaGraphTest`, `ReviewLegacyV2Test`, `ReviewTextV3Test`, `ReviewVisionTest`, `ReviewNavigationTest`, and `ReviewExerciseUiTest`. OPC assembly passed in the same run. Coverage includes persisted readback, legacy decoding, retries, cancellation, duplicate prevention, bounded follow-ups, source changes, notice consumption and navigation/input logic.
 

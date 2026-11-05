@@ -191,15 +191,32 @@ class DirectDeepSeekGatewayTest {
             assertEquals(2, payload.getJSONObject("input").getJSONArray("sources").length())
             assertEquals("正文", payload.getJSONArray("units").getJSONObject(0).getString("markdown"))
             val body = when (calls++) {
-                0 -> JSONObject("""{"exercises":[{"unitId":"unit","kind":"SHORT","question":"解释","options":[]}]}""")
-                1 -> { assertEquals("原样回答", payload.getString("studentAnswer")); JSONObject("""{"verdict":"partial","feedback":"反馈","reasoning":"思路","sourceIds":["s1"],"followUp":{"unitId":"unit","kind":"SHORT","question":"再解释","options":[]}}""") }
+                0 -> {
+                    val prompt = request.getJSONArray("messages").getJSONObject(0).getString("content")
+                    assertTrue(prompt.contains("优先生成 2 道")); assertTrue(prompt.contains("2 至 3 道")); assertTrue(prompt.contains("其他选项为什么不对"))
+                    JSONObject("""{"exercises":[{"unitId":"unit","kind":"SHORT","question":"解释","options":[]},{"unitId":"unit","kind":"MCQ","question":"为什么选？其他为何不对？","options":["A. 一","B. 二"]}]}""")
+                }
+                1 -> { assertEquals("原样回答", payload.getString("studentAnswer")); val prompt = request.getJSONArray("messages").getJSONObject(0).getString("content"); assertTrue(prompt.contains("排除其他选项")); assertTrue(prompt.contains("不只是重复原题或换数字")); JSONObject("""{"verdict":"partial","feedback":"反馈","reasoning":"思路","sourceIds":["s1"],"followUp":{"unitId":"unit","kind":"SHORT","question":"再解释","options":[]}}""") }
                 else -> JSONObject("""{"verdict":"correct","feedback":"反馈","reasoning":"思路","sourceIds":["unknown"],"followUp":null}""")
             }
             200 to response(body)
         })
-        val exercise = service.generateExercises(i, outline, listOf(unit)).single().let { ReviewExercise("local", it.unitId, it.kind, it.question, it.options) }
+        val exercise = service.generateExercises(i, outline, listOf(unit)).first().let { ReviewExercise("local", it.unitId, it.kind, it.question, it.options) }
         assertNotNull(service.gradeExercise(i, outline, listOf(unit), exercise, "原样回答", true).followUp)
         try { service.gradeExercise(i, outline, listOf(unit), exercise, "原样回答", true); fail("Expected invalid source") }
         catch (e: ReviewGatewayException) { assertEquals("INVALID_RESULT", e.code) }
+    }
+
+    @Test fun exerciseGenerationRejectsWrongCountAndUnbalancedMix() = runBlocking {
+        val i = input()
+        val bad = listOf(
+            JSONObject("""{"exercises":[{"unitId":"unit","kind":"SHORT","question":"一","options":[]}]}"""),
+            JSONObject("""{"exercises":[{"unitId":"unit","kind":"SHORT","question":"一","options":[]},{"unitId":"unit","kind":"SHORT","question":"二","options":[]}]}""")
+        )
+        for (item in bad) {
+            val gateway = DirectDeepSeekGateway("test-key", client = client { 200 to response(item) })
+            try { gateway.generateExercises(i, outline, listOf(unit)); fail("Expected invalid mix") }
+            catch (e: ReviewGatewayException) { assertEquals("INVALID_RESULT", e.code) }
+        }
     }
 }
