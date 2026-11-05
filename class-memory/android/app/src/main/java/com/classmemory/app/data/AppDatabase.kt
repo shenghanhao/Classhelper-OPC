@@ -23,6 +23,7 @@ class DbConverters {
     @Query("UPDATE sessions SET lastHeartbeatAt = :at WHERE id = :id AND status = 'recording'") suspend fun heartbeat(id: String, at: Long): Int
     @Query("UPDATE sessions SET finalCharCount = finalCharCount + :chars WHERE id = :id") suspend fun addFinalChars(id: String, chars: Int): Int
     @Query("SELECT * FROM sessions ORDER BY startedAt DESC") fun observeAll(): Flow<List<Session>>
+    @Query("SELECT * FROM sessions ORDER BY startedAt, id") suspend fun snapshotAll(): List<Session>
     @Query("SELECT * FROM sessions WHERE id = :id") fun observe(id: String): Flow<Session?>
     @Query("SELECT * FROM sessions WHERE id = :id") suspend fun find(id: String): Session?
     @Query("UPDATE sessions SET durationSec = :durationSec, finalCharCount = :chars, endedAt = :endedAt, lastHeartbeatAt = :endedAt, isOrganized = 0 WHERE id = :id") suspend fun updateAfterAppend(id: String, durationSec: Long, chars: Int, endedAt: Long): Int

@@ -1,10 +1,22 @@
 # Class Memory / 课堂记忆
 
-> **OPC development preview / OPC 开发预览**: [Current capabilities and contribution workflow](docs/OPC_STATUS.md). AI backend modules are present, but the AI UI, course context and review plans are not implemented. See each Release for the exact Debug/OPC package identity and limitations. / 当前仅增加 AI 底层模块，界面与复习工作流尚未完成；安装包类型和限制请看 Release。
-
 **Language / 语言切换:** Home **⋯** → **Switch to English** in Chinese, or **切换 中文** in English. The choice is saved; the public build starts in English. UI language does not change the ASR model or translate recordings.
 
 首页 **⋯**：中文界面选 **Switch to English**，英文界面选 **切换 中文**。选择会保存，公开版首次默认英文；切换界面语言不会更换识别模型或翻译老师的话。
+
+**下载 / Download** · [OPC 测试安装包 / OPC APK](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.1/ClassMemory-OPC.apk) · [SHA-256](https://github.com/shenghanhao/Classhelper-OPC/releases/download/v0.3.1/SHA256SUMS.txt)
+
+目前 v0.3.1 提供 OPC 安装包。Debug 安装包已构建，但 GitHub 上传连续两次中断，待恢复上传。The OPC APK is available. Uploading the built Debug APK remains pending after two interrupted attempts.
+
+**Dot / 开发接手** · 在本发布分支从 [CURRENT.md](CURRENT.md) 开始。For the implementation status, test evidence, and first development steps, read [CURRENT.md](CURRENT.md).
+
+课后复盘：当前源码支持在「复习服务设置 → 手机直连 DeepSeek」填写自己的 API Key，不需要电脑或自建服务。密钥使用 Android Keystore 加密保存，调用费用由自己的 DeepSeek 账户承担；可选模型为 deepseek-flash 和 deepseek-v4-pro。结束课堂后进入详情页生成复习资料，在复习表逐轮打勾，右下角问号可针对全课或某个知识点提问，知识结构图在手机上绘制。默认只发送预览确认的课堂文字、课程上下文和标注；[板书辅助复盘](docs/REVIEW_BOARD_PHOTOS.md)允许额外勾选上传本课照片，先看图再整理，音频仍不上传。失败后仅重试缺失部分。仍可选择自建 HTTPS 服务，见 [服务说明](class-memory/study-agent-server/README.md)。本地 v0.4.0 OPC 安装包已包含板书辅助、右侧目录和[课后练习](docs/REVIEW_EXERCISES.md)：文字作答、DeepSeek 评阅、有限补题及知识块 QA 归档。新功能已做本地专项验证，尚未做真实模型和设备验收；以上 GitHub 下载仍为 v0.3.1。
+
+For after-class review, the current source supports **Review service settings → Connect to DeepSeek on this phone**. Enter your own API key; no computer or personal server is required. Android Keystore protects the saved key, and requests are billed to your DeepSeek account. Choose deepseek-flash or deepseek-v4-pro. Open a finished class to generate explanations, check off review rounds, ask classroom/topic questions and view a knowledge map. Default analysis sends only previewed text, course context and notes. The [board-assisted review](docs/REVIEW_BOARD_PHOTOS.md) lets users explicitly select current-class images for a separate vision stage; audio is never uploaded. Retry resumes missing stages. A [self-hosted HTTPS service](class-memory/study-agent-server/README.md) remains optional. The local v0.4.0 OPC APK includes board assistance, the topic directory and [after-class practice](docs/REVIEW_EXERCISES.md): typed answers, DeepSeek feedback, bounded follow-ups and topic QA records. Targeted local tests passed; live model quality and device behavior remain unverified for these additions. The GitHub download above is still v0.3.1.
+
+当前开发分支的 0.4.1 增加复习正文排版复用、逐题折叠，以及右下角「↑ / 目录 / ?」导航。新练习按知识块数量生成 2–8 道，选择题/简答题数量最多相差一道，并要求说明各选项理由。本轮仅同步源码、提供本地安装包，不向 GitHub 上传 APK 或课堂资料；实际手机滑动表现待后续验收。详见 [当前交接记录](CURRENT.md)。
+
+Development version 0.4.1 adds reusable review rendering, individually collapsible questions and bottom-right **↑ / Index / ?** navigation. New practice sets contain 2–8 questions based on topic count, with multiple-choice and short-answer counts differing by at most one. Multiple-choice answers must explain both the selected and rejected options. This delivery publishes source changes only; APKs and classroom data are not uploaded to GitHub. On-device scrolling remains to be verified; see [CURRENT.md](CURRENT.md).
 
 ## English — how to use
 
@@ -16,7 +28,7 @@ An experimental local Android transcription app. It saves final text, your quest
 4. Add a **Question** or **Comment**, or **Capture board**. Each gets a classroom-relative timestamp. Expand the board drawer to view/zoom/reset photos or delete with confirmation.
 5. Tap **End class** at the top and confirm. Open history to rename/classify a classroom, mark it organized or append another completed note. Filter the timeline by **All**, **Board photos**, or **Questions & comments**.
 6. Export **Markdown** for text/annotations or **Notebook (.ipynb)** for text with embedded photos. Sharing is manual; a recipient app/cloud may upload the shared file. Check sensitive content and permissions first.
-7. Debug/test APKs provide **⋯ → Import test audio**. Select authorized WAV/M4A etc.; decoding produces 16 kHz mono PCM for local ASR, without creating an app-owned audio copy. The original file is not deleted. Reports include duration, RTF, backlog and memory.
+7. In the OPC APK or a Debug build of this source, select **⋯ → Import class recording**. Choose a WAV/M4A recording and start local recognition. Open the saved class in History after completion. Audio is decoded to 16 kHz mono PCM in memory. Your original file remains in its existing location.
 
 Hotwords start disabled and empty. Create your own course/library in Settings, import/export its JSON, then select it on Home. Use a small relevant vocabulary. The public build includes **no private course schedule, classroom audio/transcript or starter vocabulary**.
 
@@ -48,7 +60,7 @@ Output: `class-memory/android/app/build/outputs/apk/debug/app-debug.apk`. This i
 4. 添加疑问、注释或拍摄板书，会自动附上课堂相对时间。展开板书预览可缩放、复位及二次确认删除。
 5. 顶部“结束课堂”并确认，再从历史查看、改名、分类、标记整理或追加其他已结束笔记。可筛选所有、板书或疑问与注释。
 6. Markdown导出文字与标注；Notebook导出时间线和内嵌图片。分享前检查隐私/版权，接收方软件或云服务可能上传文件。
-7. Debug测试版的 **⋯ → 导入测试音频** 支持获授权的 WAV/M4A等输入，解码为16kHz单声道PCM后本地识别，不另存音频，不删除原文件；报告包含RTF等指标。
+7. 当前 OPC 安装包和本版源码构建的 Debug 包均可从 **⋯ → 导入课堂录音** 选择 WAV/M4A 等录音并开始本地识别，完成后在历史课堂中打开文字。识别使用内存中的16kHz单声道PCM，原始文件留在原位置。
 
 热词默认关闭、从空词库开始。设置中自建课程/词库并导入导出JSON，首页选择对应库。不要开启大量不相关词。公开版不附带个人课表、课堂资料或私人词库。
 

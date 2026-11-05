@@ -92,21 +92,18 @@ class StudyAgent(
      * source hash is returned without any network call, and concurrent callers are serialized.
      */
     suspend fun analyze(preparation: StudyPreparation.Ready, force: Boolean = false): StudyRunResult {
-        if (!force) {
-            preparation.cached?.let { return StudyRunResult.Success(it, fromCache = true) }
-        }
         return runLock.withLock {
-            if (!force) {
-                val latest = store.latestForSession(preparation.snapshot.sessionId)
-                if (latest != null && latest.sourceHash == preparation.snapshot.sourceHash) {
-                    return@withLock StudyRunResult.Success(latest, fromCache = true)
-                }
-            }
             val sessionId = preparation.snapshot.sessionId
             val beforeHash = currentSourceHash(sessionId)
                 ?: return@withLock StudyRunResult.Failure(StudyRunError.DELETED, "Class was deleted before analysis")
             if (beforeHash != preparation.snapshot.sourceHash) {
                 return@withLock StudyRunResult.Failure(StudyRunError.STALE, "Class content changed before analysis")
+            }
+            if (!force) {
+                val latest = store.latestForSession(sessionId)
+                if (latest != null && latest.sourceHash == beforeHash) {
+                    return@withLock StudyRunResult.Success(latest, fromCache = true)
+                }
             }
             val analysis = try {
                 client.analyze(preparation.input, preparation.snapshot)

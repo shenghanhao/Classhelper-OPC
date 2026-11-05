@@ -1,0 +1,120 @@
+name: Remove temporary OPC test data after the next release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cleanup-temporary-opc-data-v040
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.repository == 'shenghanhao/Classhelper-OPC'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Remove only the temporary v0.4.0 data ZIP after a newer stable release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          // BEGIN_TEMPORARY_OPC_CLEANUP
+          (async () => {
+            const { readFileSync } = require('node:fs');
+            const repository = 'shenghanhao/Classhelper-OPC';
+            const targetTag = 'v0.4.0';
+            const targetAsset = 'TEMPORARY-OPC-TEST-DATA-v0.4.0.zip';
+            const prefix = '/repos/' + repository;
+            const token = process.env.GITHUB_TOKEN;
+            const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+            if (process.env.GITHUB_REPOSITORY !== repository || event.repository?.full_name !== repository) {
+              console.log('Skipped: repository does not match.');
+              return;
+            }
+            if (!['release', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME)) {
+              console.log('Skipped: unsupported event.');
+              return;
+            }
+            if (process.env.GITHUB_EVENT_NAME === 'release' && event.action !== 'published') {
+              console.log('Skipped: release was not published.');
+              return;
+            }
+            if (!token) throw new Error('Missing GitHub token.');
+
+            const validId = value => Number.isSafeInteger(value) && value > 0;
+            async function api(path, method = 'GET') {
+              const response = await fetch('https://api.github.com' + prefix + path, {
+                method,
+                redirect: 'error',
+                headers: {
+                  Authorization: 'Bearer ' + token,
+                  Accept: 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                },
+                signal: AbortSignal.timeout(20000),
+              });
+              if (response.status === 404) return null;
+              if (!response.ok) throw new Error('GitHub API request failed with HTTP ' + response.status + '.');
+              return response.status === 204 ? true : response.json();
+            }
+            const target = await api('/releases/tags/' + targetTag);
+            if (!target || target.tag_name !== targetTag || target.draft !== false || !validId(target.id) || !Number.isFinite(Date.parse(target.published_at))) {
+              console.log('Skipped: the published v0.4.0 release was not found.');
+              return;
+            }
+            const isLaterStable = release => release &&
+              validId(release.id) && release.id !== target.id &&
+              typeof release.tag_name === 'string' && release.tag_name.length > 0 &&
+              release.tag_name !== targetTag && release.draft === false &&
+              release.prerelease === false &&
+              Number.isFinite(Date.parse(release.published_at)) &&
+              Date.parse(release.published_at) > Date.parse(target.published_at);
+
+            let trigger = null;
+            if (process.env.GITHUB_EVENT_NAME === 'release') {
+              if (validId(event.release?.id)) trigger = await api('/releases/' + event.release.id);
+            } else {
+              for (let page = 1; ; page++) {
+                const releases = await api('/releases?per_page=100&page=' + page);
+                if (!Array.isArray(releases)) throw new Error('Invalid release list.');
+                trigger = releases.find(isLaterStable);
+                if (trigger || releases.length < 100) break;
+              }
+              if (trigger) trigger = await api('/releases/' + trigger.id);
+            }
+            if (!isLaterStable(trigger)) {
+              console.log('Skipped: no later published stable release.');
+              return;
+            }
+
+            let candidate = null;
+            for (let page = 1; ; page++) {
+              const assets = await api('/releases/' + target.id + '/assets?per_page=100&page=' + page);
+              if (!Array.isArray(assets)) throw new Error('Invalid asset list.');
+              candidate = assets.find(asset => asset.name === targetAsset && validId(asset.id));
+              if (candidate || assets.length < 100) break;
+            }
+            if (!candidate) {
+              console.log('Skipped: the temporary ZIP is already absent.');
+              return;
+            }
+            // Recheck this exact asset ID. The allowlist contains one filename only.
+            const asset = await api('/releases/assets/' + candidate.id);
+            if (!asset || asset.id !== candidate.id || asset.name !== targetAsset) {
+              console.log('Skipped: the selected asset changed or was removed.');
+              return;
+            }
+            await api('/releases/assets/' + asset.id, 'DELETE');
+            console.log('Temporary v0.4.0 OPC test-data ZIP removed or already absent.');
+          })().catch(error => {
+            console.error(error.message);
+            process.exitCode = 1;
+          });
+          // END_TEMPORARY_OPC_CLEANUP
+          NODE

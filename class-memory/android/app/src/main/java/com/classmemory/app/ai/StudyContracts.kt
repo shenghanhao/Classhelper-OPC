@@ -11,13 +11,6 @@ import org.json.JSONObject
 
 const val STUDY_SCHEMA_VERSION = 1
 const val STUDY_SKILL_VERSION = "opc-summary-v1"
-const val STUDY_MAX_INPUT_CHARS = 20_000
-const val STUDY_MAX_SEGMENTS = 400
-const val STUDY_MAX_NOTES = 100
-const val STUDY_MAX_SUMMARY_CHARS = 4_000
-const val STUDY_MAX_KNOWLEDGE_POINTS = 12
-const val STUDY_MAX_EVIDENCE_PER_POINT = 5
-const val STUDY_MAX_EVIDENCE_QUOTE_CHARS = 240
 
 enum class StudyErrorCode {
     INVALID_JSON,
@@ -69,6 +62,7 @@ data class StudySnapshot(
     val segments: List<StudySegment>,
     val notes: List<StudyNote>,
     val sourceHash: String,
+    val courseContextKey: String? = null,
 ) {
     companion object {
         fun create(
@@ -76,6 +70,7 @@ data class StudySnapshot(
             segments: List<TranscriptSegment>,
             notes: List<ClassroomNote>,
             capturedAt: Long,
+            courseContextKey: String? = null,
         ): StudySnapshot {
             val mappedSegments = segments
                 .map { StudySegment(it.id, it.startMs, it.endMs, it.text) }
@@ -93,6 +88,7 @@ data class StudySnapshot(
                 durationSec = session.durationSec,
                 segments = mappedSegments,
                 notes = mappedNotes,
+                courseContextKey = courseContextKey,
                 sourceHash = computeSourceHash(
                     sessionId = session.id,
                     title = session.title,
@@ -100,6 +96,7 @@ data class StudySnapshot(
                     startedAt = session.startedAt,
                     segments = mappedSegments,
                     notes = mappedNotes,
+                    courseContextKey = courseContextKey,
                 ),
             )
         }
@@ -117,6 +114,7 @@ internal fun computeSourceHash(
     startedAt: Long,
     segments: List<StudySegment>,
     notes: List<StudyNote>,
+    courseContextKey: String? = null,
 ): String {
     val payload = StringBuilder()
     fun field(name: String, value: String) {
@@ -124,6 +122,7 @@ internal fun computeSourceHash(
             .append(value.length).append(':').append(value).append('\u001f')
     }
     field("schemaVersion", STUDY_SCHEMA_VERSION.toString())
+    if (courseContextKey != null) field("courseContextKey", courseContextKey)
     field("sessionId", sessionId)
     field("startedAt", startedAt.toString())
     field("title", title?.trim().orEmpty())
@@ -208,16 +207,6 @@ data class StudyInput(
                 segments = snapshot.segments,
                 notes = snapshot.notes,
             )
-            if (input.segments.size > STUDY_MAX_SEGMENTS ||
-                input.notes.size > STUDY_MAX_NOTES ||
-                input.charCount > STUDY_MAX_INPUT_CHARS
-            ) {
-                throw StudyContractException(
-                    StudyErrorCode.INPUT_TOO_LARGE,
-                    "Study input exceeds the limit: ${input.segments.size} segments, " +
-                        "${input.notes.size} notes, ${input.charCount} chars",
-                )
-            }
             return input
         }
     }
@@ -318,8 +307,8 @@ object StudyContracts {
         if (analysis.skillVersion != STUDY_SKILL_VERSION) {
             throw StudyContractException(StudyErrorCode.UNSUPPORTED_SCHEMA, "Unsupported skill version")
         }
-        if (analysis.summary.isBlank() || analysis.summary.length > STUDY_MAX_SUMMARY_CHARS) {
-            throw StudyContractException(StudyErrorCode.INVALID_SUMMARY, "Summary is empty or too long")
+        if (analysis.summary.isBlank()) {
+            throw StudyContractException(StudyErrorCode.INVALID_SUMMARY, "Summary is empty")
         }
         validatePoints(analysis.knowledgePoints, snapshot.segments.associateBy { it.id })
     }
@@ -328,10 +317,10 @@ object StudyContracts {
     fun validateStoredPoints(points: List<StudyKnowledgePoint>) = validatePoints(points, null)
 
     private fun validatePoints(points: List<StudyKnowledgePoint>, segments: Map<String, StudySegment>?) {
-        if (points.isEmpty() || points.size > STUDY_MAX_KNOWLEDGE_POINTS) {
+        if (points.isEmpty()) {
             throw StudyContractException(
                 StudyErrorCode.INVALID_KNOWLEDGE_POINTS,
-                "Knowledge point count must be 1..$STUDY_MAX_KNOWLEDGE_POINTS",
+                "At least one knowledge point is required",
             )
         }
         val ids = HashSet<String>(points.size)
@@ -342,13 +331,13 @@ object StudyContracts {
             if (!ids.add(point.id)) {
                 throw StudyContractException(StudyErrorCode.INVALID_KNOWLEDGE_POINTS, "Duplicate knowledge point id: ${point.id}")
             }
-            if (point.title.isBlank() || point.title.length > 120) {
+            if (point.title.isBlank()) {
                 throw StudyContractException(StudyErrorCode.INVALID_KNOWLEDGE_POINTS, "Invalid title at $index")
             }
-            if (point.explanation.isBlank() || point.explanation.length > 800) {
+            if (point.explanation.isBlank()) {
                 throw StudyContractException(StudyErrorCode.INVALID_KNOWLEDGE_POINTS, "Invalid explanation at $index")
             }
-            if (point.evidence.isEmpty() || point.evidence.size > STUDY_MAX_EVIDENCE_PER_POINT) {
+            if (point.evidence.isEmpty()) {
                 throw StudyContractException(StudyErrorCode.INVALID_EVIDENCE, "Evidence count is out of range at $index")
             }
             val segmentIds = HashSet<String>(point.evidence.size)
@@ -356,7 +345,7 @@ object StudyContracts {
                 if (evidence.segmentId.isBlank() || !segmentIds.add(evidence.segmentId)) {
                     throw StudyContractException(StudyErrorCode.INVALID_EVIDENCE, "Duplicate or empty segment id at $index")
                 }
-                if (evidence.quote.isBlank() || evidence.quote.length > STUDY_MAX_EVIDENCE_QUOTE_CHARS) {
+                if (evidence.quote.isBlank()) {
                     throw StudyContractException(StudyErrorCode.INVALID_EVIDENCE, "Invalid evidence quote at $index")
                 }
             }

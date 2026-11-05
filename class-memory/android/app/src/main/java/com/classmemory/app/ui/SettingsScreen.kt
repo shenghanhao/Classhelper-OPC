@@ -31,7 +31,14 @@ fun SettingsScreen(
     onBack: () -> Unit,
     openHotwordManager: Boolean = false,
     onHotwordManagerOpened: () -> Unit = {},
+    onOpenClass: (String) -> Unit = {},
+    onReviewSettings: () -> Unit = {},
 ) {
+    var manageContexts by rememberSaveable { mutableStateOf(false) }
+    if (manageContexts) {
+        CourseContextsScreen(repo, onBack = { manageContexts = false }, onOpenClass = onOpenClass)
+        return
+    }
     val courseTypes by repo.courseTypes().collectAsState(emptyList())
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -75,6 +82,16 @@ fun SettingsScreen(
             contentPadding = PaddingValues(start = ClassMemorySpacing.screen, end = ClassMemorySpacing.screen, top = 6.dp, bottom = 25.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
+            item {
+                OutlinedButton(onClick = { manageContexts = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(tr("课程上下文 · 查看与编辑", "Course context · View and edit"))
+                }
+            }
+            item {
+                OutlinedButton(onClick = onReviewSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(tr("复习服务连接", "Review service connection"))
+                }
+            }
             if (supportsCourseHotwords) {
                 item {
                     Row(

@@ -11,7 +11,8 @@ Application license does not replace component licenses. Preserve upstream copyr
 | Optional Qwen3-ASR/VAD/tokenizer | Not redistributed in this default APK; check the exact artifact's separate license before distributing a variant. |
 | AndroidX/Compose/Room | Apache-2.0; versions pinned in `app/gradle.lockfile`, [AndroidX overview](https://source.android.com/docs/setup/about/licenses). |
 | Kotlin and kotlinx.coroutines | Apache-2.0, [Kotlin](https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt), [coroutines](https://github.com/Kotlin/kotlinx.coroutines/blob/master/LICENSE.txt). |
-| OkHttp / Okio | Apache-2.0, [OkHttp](https://github.com/square/okhttp/blob/master/LICENSE.txt), [Okio](https://github.com/square/okio/blob/master/LICENSE.txt). Legacy network adapter is not activated by the public UI. |
+| OkHttp / Okio | Apache-2.0, [OkHttp](https://github.com/square/okhttp/blob/master/LICENSE.txt), [Okio](https://github.com/square/okio/blob/master/LICENSE.txt). The review client uses HTTPS to reach the configured proxy. |
+| Offline review renderer | KaTeX, its fonts, marked and DOMPurify ship in [review-katex](../class-memory/android/app/src/main/assets/review-katex/) alongside their individual license notices. |
 | Gradle wrapper | Apache-2.0, [Gradle](https://github.com/gradle/gradle/blob/master/LICENSE). |
 | org.json test utility | Its own [JSON license](https://github.com/stleary/JSON-java/blob/master/LICENSE); JVM tests only, not an additional bundled Android runtime dependency. |
 

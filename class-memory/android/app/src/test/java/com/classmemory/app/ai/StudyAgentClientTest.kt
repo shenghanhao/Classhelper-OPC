@@ -102,6 +102,13 @@ class StudyAgentClientTest {
         .build()
 
     @Test
+    fun readsResponseBeyondOldByteCapWithoutTruncation() = runBlocking {
+        val summary = "a".repeat(300_000)
+        val service = StudyAgentClient("https://study.example.com", client(body = validResponse(summary = summary)))
+        assertEquals(summary, service.analyze(input, snapshot).summary)
+    }
+
+    @Test
     fun sendsTraceableRequestAndParsesEvidence() = runBlocking {
         var payload: JSONObject? = null
         val client = StudyAgentClient(

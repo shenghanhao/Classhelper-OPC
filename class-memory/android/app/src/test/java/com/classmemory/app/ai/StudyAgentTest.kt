@@ -147,6 +147,30 @@ class StudyAgentTest {
     }
 
     @Test
+    fun preparedCacheIsRejectedWhenCourseContextChanges() = runBlocking {
+        val studyAgent = agent()
+        studyAgent.analyze(studyAgent.prepare(session.id, "zh") as StudyPreparation.Ready)
+        val cached = studyAgent.prepare(session.id, "zh") as StudyPreparation.Ready
+        assertNotNull(cached.cached)
+        currentSnapshot = StudySnapshot.create(session, segments, notes, 10_000, courseContextKey = "course-a:2")
+        val result = studyAgent.analyze(cached)
+        assertEquals(StudyRunError.STALE, (result as StudyRunResult.Failure).error)
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun preparedCacheIsRejectedWhenClassIsDeleted() = runBlocking {
+        val studyAgent = agent()
+        studyAgent.analyze(studyAgent.prepare(session.id, "zh") as StudyPreparation.Ready)
+        val cached = studyAgent.prepare(session.id, "zh") as StudyPreparation.Ready
+        assertNotNull(cached.cached)
+        currentSnapshot = null
+        val result = studyAgent.analyze(cached)
+        assertEquals(StudyRunError.DELETED, (result as StudyRunResult.Failure).error)
+        assertEquals(1, requests)
+    }
+
+    @Test
     fun forceReanalysisCreatesANewRequest() = runBlocking {
         val studyAgent = agent()
         val prepared = studyAgent.prepare(session.id, "zh") as StudyPreparation.Ready

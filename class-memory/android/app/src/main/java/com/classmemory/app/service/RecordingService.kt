@@ -7,6 +7,7 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.classmemory.app.ClassMemoryApp
+import com.classmemory.app.benchmark.DebugBenchmarkService
 import com.classmemory.app.audio.AudioCapture
 import com.classmemory.app.asr.LocalAsrEvent
 import com.classmemory.app.asr.LocalAsrSession
@@ -42,6 +43,9 @@ class RecordingService : Service() {
         val state = _state.asStateFlow()
 
         fun start(context: Context) {
+            check(!DebugBenchmarkService.state.value.running) {
+                tr("请先完成或停止课堂录音导入", "Finish or stop the class recording import first")
+            }
             val intent = Intent(context, RecordingService::class.java)
                 .setAction(ACTION_START)
             if (Build.VERSION.SDK_INT >= 26) {
@@ -101,6 +105,11 @@ class RecordingService : Service() {
     }
 
     private fun begin() {
+        if (DebugBenchmarkService.state.value.running) {
+            _state.value = RecordingUiState(error = tr("正在导入课堂录音", "A class recording is being imported"))
+            stopSelf()
+            return
+        }
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {

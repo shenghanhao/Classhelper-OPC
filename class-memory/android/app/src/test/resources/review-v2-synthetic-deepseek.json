@@ -1,0 +1,352 @@
+{
+  "syntheticOnly": true,
+  "model": "deepseek-flash",
+  "input": {
+    "schemaVersion": 2,
+    "sessionId": "synthetic-class-2",
+    "sourceHash": "69f3080b9389a63d228cf2c503c6102de25af08daba52d846aaa61622d466c55",
+    "language": "zh",
+    "title": "自编力学课堂：合力与动量",
+    "today": "2026-11-04",
+    "course": {
+      "id": "synthetic-mechanics",
+      "revision": 1,
+      "name": "自编力学演示课",
+      "background": "两节完全自编、非真实课堂的数据",
+      "goals": "区分合力与动量守恒条件",
+      "chapters": "合力；动量",
+      "terminology": "F合表示合外力；正方向向右；p表示动量",
+      "prerequisites": "向量与质量",
+      "sources": "本工具内自编材料"
+    },
+    "sources": [
+      {
+        "id": "current-1",
+        "sessionId": "synthetic-class-2",
+        "segmentId": "seg-1",
+        "startMs": 0,
+        "endMs": 30000,
+        "text": "沿用上一课的约定，F合表示合外力，向右为正。质量恒定时，合外力等于质量乘加速度。今天的重点是先选择研究对象，再画受力图。",
+        "isCurrent": true
+      },
+      {
+        "id": "current-2",
+        "sessionId": "synthetic-class-2",
+        "segmentId": "seg-2",
+        "startMs": 30000,
+        "endMs": 60000,
+        "text": "看本课35秒拍摄的板书索引。一个质量2千克的物块受到向右6牛顿、向左2牛顿的力，合外力向右4牛顿，加速度向右2米每二次方秒。这个例子说明方向不能遗漏。",
+        "isCurrent": true
+      },
+      {
+        "id": "current-3",
+        "sessionId": "synthetic-class-2",
+        "segmentId": "seg-3",
+        "startMs": 60000,
+        "endMs": 90000,
+        "text": "接着讲动量。动量p等于质量乘速度，是矢量。系统合外力为零时，总动量守恒。本节只讨论这个条件，不扩展到能量守恒。",
+        "isCurrent": true
+      },
+      {
+        "id": "current-4",
+        "sessionId": "synthetic-class-2",
+        "segmentId": "seg-4",
+        "startMs": 90000,
+        "endMs": 120000,
+        "text": "最后回到前面的合力。计算单个物块加速度，和判断系统动量是否守恒，都需要明确研究对象及外力。两处的研究对象可能不同，不能直接套同一个结论。这就是本节回顾重点。",
+        "isCurrent": true
+      },
+      {
+        "id": "history-1",
+        "sessionId": "synthetic-class-1",
+        "segmentId": "old-1",
+        "startMs": 0,
+        "endMs": 30000,
+        "text": "第一节约定F合表示合外力，向右为正方向。力与动量都是矢量。分析一个系统前，要先确定系统包括哪些物体。",
+        "isCurrent": false
+      }
+    ],
+    "photos": [
+      {
+        "id": "photo-35",
+        "sessionId": "synthetic-class-2",
+        "atMs": 35000
+      }
+    ],
+    "notes": [
+      {
+        "id": "note-1",
+        "atMs": 100000,
+        "kind": "QUESTION",
+        "text": "为什么物块和整个系统的外力条件不能混用？"
+      }
+    ]
+  },
+  "outline": {
+    "overview": "本课先约定合外力方向与研究对象，结合质量2千克物块的受力例子计算合外力与加速度；随后介绍动量定义和系统动量守恒条件；最后回顾合力与动量问题都需要明确研究对象及外力，并提醒不同研究对象的外力条件不能混用。",
+    "sections": [
+      {
+        "id": "section-1-sec-1",
+        "title": "合力与研究对象",
+        "sourceIds": [
+          "current-1",
+          "current-2"
+        ]
+      },
+      {
+        "id": "section-1-sec-2",
+        "title": "动量与守恒条件",
+        "sourceIds": [
+          "current-3"
+        ]
+      },
+      {
+        "id": "section-1-sec-3",
+        "title": "回顾：合力与动量的比较",
+        "sourceIds": [
+          "current-4"
+        ]
+      }
+    ],
+    "topics": [
+      {
+        "id": "topic-1-topic-1",
+        "title": "合外力与加速度的关系",
+        "sectionIds": [
+          "section-1-sec-1",
+          "section-1-sec-3"
+        ],
+        "sourceIds": [
+          "current-1",
+          "current-2",
+          "current-4"
+        ]
+      },
+      {
+        "id": "topic-1-topic-2",
+        "title": "研究对象与受力图",
+        "sectionIds": [
+          "section-1-sec-1",
+          "section-1-sec-3"
+        ],
+        "sourceIds": [
+          "current-1",
+          "current-2",
+          "current-4"
+        ]
+      },
+      {
+        "id": "topic-1-topic-3",
+        "title": "合力计算中的方向",
+        "sectionIds": [
+          "section-1-sec-1"
+        ],
+        "sourceIds": [
+          "current-2"
+        ]
+      },
+      {
+        "id": "topic-1-topic-4",
+        "title": "动量定义与矢量性",
+        "sectionIds": [
+          "section-1-sec-2"
+        ],
+        "sourceIds": [
+          "current-3"
+        ]
+      },
+      {
+        "id": "topic-1-topic-5",
+        "title": "系统动量守恒条件",
+        "sectionIds": [
+          "section-1-sec-2",
+          "section-1-sec-3"
+        ],
+        "sourceIds": [
+          "current-3",
+          "current-4"
+        ]
+      },
+      {
+        "id": "topic-1-topic-6",
+        "title": "不同研究对象的外力条件不能混用",
+        "sectionIds": [
+          "section-1-sec-3"
+        ],
+        "sourceIds": [
+          "current-4"
+        ]
+      }
+    ]
+  },
+  "units": [
+    {
+      "id": "topic-1-topic-1",
+      "title": "合外力与加速度的关系",
+      "explanation": "本课约定 F合 表示合外力，向右为正方向。在质量恒定的条件下，合外力等于质量乘加速度。计算时应先选择研究对象，再画受力图，并明确合外力的方向；方向不能遗漏。",
+      "conditions": "适用于质量恒定的同一研究对象；需先规定正方向（本课向右为正）；应先选择研究对象并画受力图。",
+      "classroomFocus": "老师强调先选择研究对象、再画受力图；用质量 2 千克物块的受力计算说明方向不能遗漏；回顾时再次强调，计算单个物块加速度与判断系统动量守恒都要明确研究对象及外力，且两处研究对象可能不同，不能直接套用同一个结论。",
+      "example": "质量 2 千克的物块受到向右 6 牛顿、向左 2 牛顿的力，合外力向右 4 牛顿，加速度向右 2 米每二次方秒。",
+      "sourceIds": [
+        "current-1",
+        "current-2",
+        "current-4",
+        "history-1"
+      ],
+      "photoIds": [
+        "photo-35"
+      ],
+      "sectionIds": [
+        "section-1-sec-1",
+        "section-1-sec-3"
+      ]
+    },
+    {
+      "id": "topic-1-topic-2",
+      "title": "研究对象与受力图",
+      "explanation": "分析受力或动量问题前，先明确研究对象是单个物块还是整个系统，再围绕该对象画受力图并标出外力方向。研究对象不同，涉及的外力条件可能不同，不能把单个物块与整个系统的结论直接混用。",
+      "conditions": "适用于分析合力、加速度或动量守恒问题；需先确定研究对象（单个物块或系统）及其所受外力，并按课堂约定向右为正方向处理方向。",
+      "classroomFocus": "老师强调先选择研究对象，再画受力图；方向不能遗漏。回顾时再次强调，计算单个物块加速度与判断系统动量守恒都要明确研究对象及外力，两处研究对象可能不同，不能直接套同一个结论。",
+      "example": "原文例子：质量2千克的物块受到向右6牛顿、向左2牛顿的力，合外力向右4牛顿，加速度向右2米每二次方秒；该例用来说明方向不能遗漏。",
+      "sourceIds": [
+        "current-1",
+        "current-2",
+        "current-4",
+        "history-1"
+      ],
+      "photoIds": [
+        "photo-35"
+      ],
+      "sectionIds": [
+        "section-1-sec-1",
+        "section-1-sec-3"
+      ]
+    },
+    {
+      "id": "topic-1-topic-3",
+      "title": "合力计算中的方向",
+      "explanation": "本课约定向右为正方向。计算合力时，要先明确每个力的方向：向右的6牛顿取正、向左的2牛顿取负，因此合外力为向右4牛顿；原文同时给出该2千克物块的加速度为向右2米每二次方秒。这里的关键是：不仅算出大小，还要保留并说明方向。",
+      "conditions": "适用于本课约定向右为正方向、且已明确各力方向的情形；本题数值对应质量2千克物块受到向右6牛顿和向左2牛顿的力。",
+      "classroomFocus": "老师强调计算合力时方向不能遗漏，并用该物块受向右6牛顿、向左2牛顿的力得到向右4牛顿合外力的例子来说明。",
+      "example": "一个质量2千克的物块受到向右6牛顿、向左2牛顿的力，合外力向右4牛顿，加速度向右2米每二次方秒；这个例子说明方向不能遗漏。",
+      "sourceIds": [
+        "current-2",
+        "history-1"
+      ],
+      "photoIds": [
+        "photo-35"
+      ],
+      "sectionIds": [
+        "section-1-sec-1"
+      ]
+    },
+    {
+      "id": "topic-1-topic-4",
+      "title": "动量定义与矢量性",
+      "explanation": "动量用 p 表示，定义为质量乘速度。动量是矢量；在描述动量时，既要说明大小，也要注意方向。",
+      "conditions": "动量定义本身没有额外适用条件；若讨论系统动量守恒，则需要系统合外力为零。",
+      "classroomFocus": "老师强调动量是矢量；本节只讨论系统合外力为零时总动量守恒这一条件，不扩展到能量守恒。",
+      "example": null,
+      "sourceIds": [
+        "current-3",
+        "history-1"
+      ],
+      "photoIds": [],
+      "sectionIds": [
+        "section-1-sec-2"
+      ]
+    },
+    {
+      "id": "topic-1-topic-5",
+      "title": "系统动量守恒条件",
+      "explanation": "动量 p 等于质量乘速度，是矢量。判断系统动量是否守恒时，先要明确研究对象是哪一个系统、系统包括哪些物体，并分析系统所受外力；当系统合外力为零时，系统总动量守恒。本节只讨论这一守恒条件，不扩展到能量守恒。课堂回顾还强调：计算单个物块加速度与判断系统动量是否守恒，都需要明确研究对象及外力，但两处的研究对象可能不同，不能直接套用同一个结论。",
+      "conditions": "系统合外力为零；判断前需明确系统范围及所受外力；本节限定在动量守恒条件，不涉及能量守恒。",
+      "classroomFocus": "老师强调“系统合外力为零”是总动量守恒的条件，并明确本节只讨论这个条件、不扩展到能量守恒；回顾时提醒单个物块与整个系统的研究对象可能不同，外力条件不能混用。",
+      "example": null,
+      "sourceIds": [
+        "current-3",
+        "current-4",
+        "history-1"
+      ],
+      "photoIds": [],
+      "sectionIds": [
+        "section-1-sec-2",
+        "section-1-sec-3"
+      ]
+    },
+    {
+      "id": "topic-1-topic-6",
+      "title": "不同研究对象的外力条件不能混用",
+      "explanation": "计算单个物块的加速度和判断系统动量是否守恒，都要求先明确研究对象和外力；但两处的研究对象可能不同（前者是单个物块，后者是整个系统），各自所受外力条件也可能不同，因此不能把一处得到的结论直接套用到另一处。",
+      "conditions": "当分析对象从单个物体改为系统，或从系统改为单个物体时，必须重新明确研究对象并重新判断外力条件，不能沿用原来的结论。",
+      "classroomFocus": "老师在本节回顾中强调：两处的研究对象可能不同，不能直接套同一个结论；课堂提问也聚焦于“物块和整个系统的外力条件为什么不能混用”。",
+      "example": null,
+      "sourceIds": [
+        "current-4",
+        "history-1"
+      ],
+      "photoIds": [],
+      "sectionIds": [
+        "section-1-sec-3"
+      ]
+    }
+  ],
+  "plan": {
+    "title": "自编力学课堂：合力与动量复习方案",
+    "introduction": "按课堂顺序复习：先明确研究对象和正方向，再复习合力与加速度、动量定义和系统动量守恒条件，最后比较单个物块与整个系统，避免混用不同研究对象的外力条件。每一步先回忆，再对照课堂材料检查。",
+    "suggestedDate": "2026-11-05",
+    "steps": [
+      {
+        "title": "先定研究对象和正方向",
+        "instruction": "合上材料，用一句话回答：分析合力或动量问题前先确定什么？然后在纸上画出质量2千克物块的受力示意，标出研究对象、向右为正方向以及各个力的方向。检查自己是否先写研究对象，再画受力图，方向是否标全。",
+        "unitIds": [
+          "topic-1-topic-2",
+          "topic-1-topic-3"
+        ]
+      },
+      {
+        "title": "复算合力与加速度",
+        "instruction": "沿用质量2千克物块受到向右6牛顿、向左2牛顿的力的例子，写出合外力计算过程，并说明加速度大小和方向。检查合外力是否为向右4牛顿、加速度是否为向右2米每二次方秒，以及是否体现合外力等于质量乘加速度。",
+        "unitIds": [
+          "topic-1-topic-1",
+          "topic-1-topic-3"
+        ]
+      },
+      {
+        "title": "回忆动量定义与矢量性",
+        "instruction": "不看书，用自己的话写出动量p的定义，并说明描述动量时为什么不能只写大小。检查是否写出动量等于质量乘速度，是否注明动量是矢量、需要关注方向。",
+        "unitIds": [
+          "topic-1-topic-4"
+        ]
+      },
+      {
+        "title": "检查系统动量守恒条件",
+        "instruction": "先选定一个系统，说明系统包括哪些物体，再回忆判断系统总动量守恒的条件。检查自己是否把“系统合外力为零”作为判断前提，并确认本节只讨论动量守恒条件，不扩展到能量守恒。",
+        "unitIds": [
+          "topic-1-topic-5"
+        ]
+      },
+      {
+        "title": "比较单个物块与整个系统",
+        "instruction": "把前面的物块例子和动量守恒判断并排写成两行：分别写研究对象、需要分析的外力条件，以及能否直接套用另一处的结论。检查自己是否指出两处研究对象可能不同，因此外力条件不能混用。",
+        "unitIds": [
+          "topic-1-topic-6",
+          "topic-1-topic-2",
+          "topic-1-topic-5"
+        ]
+      },
+      {
+        "title": "按顺序复述整课",
+        "instruction": "按“先定研究对象—画受力图—明确方向—再计算或判断”的顺序，用3到5句话复述整课。检查复述是否包括合力与加速度、动量定义、系统动量守恒条件，以及不同研究对象不能混用结论。",
+        "unitIds": [
+          "topic-1-topic-1",
+          "topic-1-topic-2",
+          "topic-1-topic-3",
+          "topic-1-topic-4",
+          "topic-1-topic-5",
+          "topic-1-topic-6"
+        ]
+      }
+    ]
+  }
+}

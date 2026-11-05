@@ -127,17 +127,49 @@ class StudyContractsTest {
     }
 
     @Test
-    fun oversizedInputIsRejected() {
+    fun largeInputIsPreservedWithoutBusinessCaps() {
         val huge = StudySnapshot.create(
             session,
-            listOf(firstSegment.copy(text = "a".repeat(STUDY_MAX_INPUT_CHARS + 1))),
-            emptyList(),
+            List(401) { firstSegment.copy(id = "seg-$it", text = "a".repeat(5000)) },
+            List(101) { question.copy(id = "note-$it", text = "b".repeat(2100)) },
             1,
         )
-        val failure = assertThrows(StudyContractException::class.java) {
-            StudyInput.from(huge, "zh")
+        val input = StudyInput.from(huge, "zh")
+        assertEquals(401, input.segments.size)
+        assertEquals(101, input.notes.size)
+        assertEquals(401 * 5000 + 101 * 2100, input.charCount)
+    }
+
+    @Test
+    fun courseContextRevisionChangesHashButAbsentContextPreservesHash() {
+        val original = StudySnapshot.create(session, listOf(firstSegment), emptyList(), 1)
+        val explicitNull = StudySnapshot.create(session, listOf(firstSegment), emptyList(), 1, courseContextKey = null)
+        val first = StudySnapshot.create(session, listOf(firstSegment), emptyList(), 1, courseContextKey = "course-a:1")
+        val revised = StudySnapshot.create(session, listOf(firstSegment), emptyList(), 1, courseContextKey = "course-a:2")
+        val reassigned = StudySnapshot.create(session, listOf(firstSegment), emptyList(), 1, courseContextKey = "course-b:1")
+        assertEquals(original.sourceHash, explicitNull.sourceHash)
+        assertNotEquals(original.sourceHash, first.sourceHash)
+        assertNotEquals(first.sourceHash, revised.sourceHash)
+        assertNotEquals(first.sourceHash, reassigned.sourceHash)
+        assertFalse(JSONObject(StudyInput.from(first, "zh").toRequestJson()).has("courseContextKey"))
+    }
+
+    @Test
+    fun largeResponsePreservesAllPointsAndEvidence() {
+        val quote = "完整原文".repeat(100)
+        val snapshot = snapshot(segments = List(6) { firstSegment.copy(id = "seg-$it", text = quote) })
+        val points = JSONArray()
+        repeat(13) { index ->
+            val evidence = JSONArray()
+            repeat(6) { evidence.put(JSONObject().put("segmentId", "seg-$it").put("quote", quote)) }
+            points.put(point(snapshot, id = "kp-$index").put("title", "标题".repeat(100))
+                .put("explanation", "解释".repeat(1000)).put("evidence", evidence))
         }
-        assertEquals(StudyErrorCode.INPUT_TOO_LARGE, failure.code)
+        val parsed = StudyContracts.parseAnalysis(response(snapshot, "总结".repeat(3000), points), snapshot)
+        assertEquals(6000, parsed.summary.length)
+        assertEquals(13, parsed.knowledgePoints.size)
+        assertEquals(6, parsed.knowledgePoints.last().evidence.size)
+        assertEquals(quote, parsed.knowledgePoints.last().evidence.last().quote)
     }
 
     @Test
