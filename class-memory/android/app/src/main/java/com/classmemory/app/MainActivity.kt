@@ -27,6 +27,7 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLanguage.initialize(this)
         setContent {
           ClassMemoryTheme {
             var page by rememberSaveable(stateSaver = screenSaver) { mutableStateOf<Screen>(Screen.Home) }
@@ -58,9 +59,7 @@ class MainActivity : ComponentActivity() {
                 val detail = page as? Screen.Detail
                 page = detail?.returnReviewId?.let { Screen.Review(it) } ?: Screen.Home
             }
-            // Refresh screen-local cached text while retaining navigation and review state.
-            key(AppLanguage.isEnglish) {
-              when (val current = page) {
+            when (val current = page) {
                 Screen.Home -> HomeScreen(
                     repo = (application as ClassMemoryApp).repository,
                     onStart = {
@@ -80,6 +79,12 @@ class MainActivity : ComponentActivity() {
                     onDetail = { page = Screen.Detail(it) },
                     onSettings = { page = Screen.Settings },
                     onManageHotwords = { openHotwordManager = true; page = Screen.Settings },
+                    onLanguageSelected = { english ->
+                        AppLanguage.saveEnglish(this, english)
+                        window.decorView.post {
+                            if (!isFinishing && !isDestroyed) recreate()
+                        }
+                    },
                     reviewRuntime = (application as ClassMemoryApp).reviewRuntime,
                     onReview = { page = Screen.Review(it) },
                 )
@@ -117,7 +122,6 @@ class MainActivity : ComponentActivity() {
                     onOpenClass = { page = Screen.Detail(it) },
                     onReviewSettings = { page = Screen.ReviewSettings(null) },
                 )
-              }
             }
           }
         }

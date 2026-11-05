@@ -15,7 +15,7 @@ class AppLanguageTest {
 
     @After
     fun restoreProcessLanguage() {
-        AppLanguage.selectEnglish(LanguagePreferences().preferences, originalLanguage)
+        AppLanguage.initialize { LanguagePreferences(mapOf("english" to originalLanguage)).preferences }
         Locale.setDefault(originalLocale)
     }
 
@@ -34,9 +34,15 @@ class AppLanguageTest {
         assertTrue(AppLanguage.isEnglish)
 
         for (selected in listOf(false, true, false, true, false)) {
-            AppLanguage.selectEnglish(saved.preferences, selected)
-            assertEquals(selected, AppLanguage.isEnglish)
+            val previous = AppLanguage.isEnglish
+            val previousLocale = Locale.getDefault()
+            AppLanguage.saveEnglish(saved.preferences, selected)
             assertEquals(selected, saved.values["english"])
+            // The popup must finish with its current language; apply the new one on recreation.
+            assertEquals(previous, AppLanguage.isEnglish)
+            assertEquals(previousLocale, Locale.getDefault())
+            AppLanguage.initialize { saved.preferences }
+            assertEquals(selected, AppLanguage.isEnglish)
             assertEquals(if (selected) "Class Memory" else "课堂记忆", tr("课堂记忆", "Class Memory"))
             assertEquals(if (selected) Locale.ENGLISH else Locale.SIMPLIFIED_CHINESE, Locale.getDefault())
         }
@@ -54,7 +60,7 @@ class AppLanguageTest {
     @Test
     fun savedEnglishIsRestoredAfterChineseWasActive() {
         val saved = LanguagePreferences(mapOf("english" to true))
-        AppLanguage.selectEnglish(LanguagePreferences().preferences, false)
+        AppLanguage.initialize { LanguagePreferences(mapOf("english" to false)).preferences }
         AppLanguage.initialize { saved.preferences }
         assertTrue(AppLanguage.isEnglish)
         assertEquals(Locale.ENGLISH, Locale.getDefault())

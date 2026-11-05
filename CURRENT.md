@@ -19,6 +19,14 @@
 | 课程上下文、模型和构建准备 | [课程上下文](docs/COURSE_CONTEXT.md)、[ASR 权重](docs/MODELS.md)、[Android 安装包](docs/OPC_APK_DELIVERY.md) |
 | 自建复盘服务 | [服务配置和 V3 请求协议](class-memory/study-agent-server/README.md) |
 
+## v0.3.2 本地真机修复
+
+语言切换问题已在 Android 真机复现。v0.3.1 点击英文菜单中的「切换 中文」会因 `ChildSemanticsNode.applySemantics` 抛出 `visitAncestors called on an unattached node` 而退出。
+
+当前实现改为只保存语种偏好，然后请求 Activity 重建。在新界面 `setContent` 前载入保存语种，点击时保留旧界面的语言、Locale 和菜单状态，移除按语言变化强制替换界面的 `key`。
+
+OPC `0.3.2-opc.4` / code `10004` 已构建并覆盖安装。语言专项测试 3 项全部通过，真机完成「英文→中文→英文→中文」且应用进程持续存活，停止进程后冷启动仍为中文。验收后手机留在中文首页。本版目前为本地安装修复，GitHub Release 仍为 v0.3.1。
+
 ## v0.3.1 修复与交接
 
 **发布情况。** OPC 安装包已公开并核对 GitHub 摘要和匿名下载入口。Debug 包已构建并通过同样的本地检查，但上传发生两次连接 EOF，按重试约定已停止。Release 当前包含 OPC 及其 SHA-256。恢复发布时只需补传同版 Debug，或从代码提交重新构建并验证后上传。请先确认重试授权。

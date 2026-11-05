@@ -49,6 +49,7 @@ fun HomeScreen(
     onDetail: (String) -> Unit,
     onSettings: () -> Unit,
     onManageHotwords: () -> Unit,
+    onLanguageSelected: (Boolean) -> Unit,
     reviewRuntime: ReviewRuntime? = null,
     onReview: (String) -> Unit = {},
 ) {
@@ -114,8 +115,8 @@ fun HomeScreen(
                             DropdownMenuItem(
                                 text = { Text(if (english) "切换 中文" else "Switch to English") },
                                 onClick = {
-                                    debugMenuExpanded = false
-                                    AppLanguage.selectEnglish(context, selected = !english)
+                                    // Activity recreation closes this popup without a pending menu-state change.
+                                    onLanguageSelected(!english)
                                 },
                             )
                         }

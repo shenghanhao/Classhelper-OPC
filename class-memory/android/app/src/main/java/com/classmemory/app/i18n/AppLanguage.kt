@@ -30,20 +30,19 @@ object AppLanguage {
         applyDefaultLocale()
     }
 
-    fun selectEnglish(context: Context, selected: Boolean) {
-        selectEnglish(
+    // Keep the old composition's language stable until its Activity has been recreated.
+    fun saveEnglish(context: Context, selected: Boolean) {
+        saveEnglish(
             context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE),
             selected,
         )
     }
 
-    internal fun selectEnglish(preferences: SharedPreferences, selected: Boolean) {
+    internal fun saveEnglish(preferences: SharedPreferences, selected: Boolean) {
         preferences
             .edit()
             .putBoolean(ENGLISH_KEY, selected)
             .apply()
-        english = selected
-        applyDefaultLocale()
     }
 
     private fun applyDefaultLocale() {
