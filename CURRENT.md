@@ -14,6 +14,8 @@
 
 功能与接口说明：[REVIEW_EXERCISES.md](docs/REVIEW_EXERCISES.md)。主要入口：`review/ReviewExercises.kt`、`ReviewRuntime.kt`、`DirectDeepSeekGateway.kt`、`ReviewStore.kt`，界面为 `ui/ReviewExercises.kt`、`ReviewScreen.kt`。
 
+发布准备：用户随后要求公开代码、APK 和仅来自 OPC 测试版的临时课堂数据；自用版资料明确排除。临时数据只允许作为 Release 附件 `TEMPORARY-OPC-TEST-DATA-v0.4.0.zip`，不能进入 Git 历史。下一次正式发布的标签包含 `.github/workflows/cleanup-temporary-opc-data.yml` 时，工作流只删除这一附件；18 项无网络模拟验证通过。生效条件与手动补跑见 [临时数据说明](docs/TEMPORARY_OPC_TEST_DATA.md)。密钥、账号、设置、日志和音频不在导出范围内。
+
 验证：8 类定向 JVM 测试 **31/31 一次通过**；`:app:assembleOpc` 成功。APK 签名与本地 0.3.3 一致，应用 ID 为 `com.classmemory.app.publish.opc2026`，`allowBackup=false`，没有测试 CA。验收产物放在本机私有交付目录 `releases/20261105-review-exercises/`：`ClassMemory-OPC-0.4.0.apk`、`SHA256SUMS.txt`、`acceptance.json` 及构建/签名日志。APK SHA-256：`670bbaab8e111514fadf23a3e49bd393d04ad543e86e93d9d17793a9c75cc30f`。没有以 mock 验证替代真实模型或真机验收。
 
 ## 已实现的行为
