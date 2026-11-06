@@ -44,7 +44,7 @@ fun PendingReviews(repo: SessionRepository, runtime: ReviewRuntime, sessions: Li
             val plan = next.plan!!
             val classroom = sessions.firstOrNull { it.id == next.input.sessionId }
             Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(color = palette.primary.copy(alpha = .10f), shape = RoundedCornerShape(8.dp)) {
                             Text(tr("继续学习", "Keep learning"), Modifier.padding(horizontal = 9.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium, color = palette.primary)
@@ -57,10 +57,10 @@ fun PendingReviews(repo: SessionRepository, runtime: ReviewRuntime, sessions: Li
                             Text(classroom?.title?.takeIf { it.isNotBlank() } ?: plan.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             Text(classroom?.courseType?.let(::displayCourseType) ?: tr("课堂复习", "Class review"), color = palette.muted, style = MaterialTheme.typography.bodyMedium)
                         }
-                        NotebookIllustration(Modifier.size(104.dp))
+                        NotebookIllustration(Modifier.size(72.dp))
                     }
                     LinearProgressIndicator(progress = { if (plan.steps.isEmpty()) 0f else next.completedStepIndices.size.toFloat() / plan.steps.size },
-                        modifier = Modifier.fillMaxWidth().height(7.dp), trackColor = palette.primary.copy(alpha = .12f))
+                        modifier = Modifier.fillMaxWidth().height(5.dp), trackColor = palette.primary.copy(alpha = .12f))
                     Button(onClick = { onOpen(next.input.sessionId) }, shape = RoundedCornerShape(13.dp)) {
                         Text(tr("继续复习  →", "Continue review  →"))
                     }
