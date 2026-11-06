@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.classmemory.app.ui.theme.ClassMemoryColors
@@ -21,7 +21,11 @@ import com.classmemory.app.ui.theme.ClassMemoryColors
 fun NotebookIllustration(modifier: Modifier = Modifier) {
     val palette = ClassMemoryColors.current
     Canvas(modifier.size(112.dp).clearAndSetSemantics { }) {
-        scale(size.width / 120f, size.height / 120f, pivot = Offset.Zero) {
+        val illustrationScale = size.minDimension / 120f
+        withTransform({
+            translate((size.width - 120f * illustrationScale) / 2f, (size.height - 120f * illustrationScale) / 2f)
+            scale(illustrationScale, illustrationScale, pivot = Offset.Zero)
+        }) {
             rotate(7f, Offset(60f, 60f)) {
                 val cover = Path().apply {
                     moveTo(13f, 25f); quadraticTo(38f, 18f, 59f, 30f)

@@ -3,6 +3,8 @@ package com.classmemory.app.ui
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.classmemory.app.data.BoardPhoto
 import com.classmemory.app.data.Session
 import com.classmemory.app.data.TranscriptSegment
@@ -171,14 +174,23 @@ fun SessionDetailScreen(
             }
             if (showReview && !isSourceView) item {
                 Surface(color = palette.surfaceAlt, shape = RoundedCornerShape(20.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
-                        NotebookIllustration(Modifier.width(85.dp).height(112.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(tr("把这节课，整理成复习材料", "Turn this class into review notes"), style = MaterialTheme.typography.titleMedium)
-                            Text(tr("结合课程背景 · 保留原文入口", "Course context · Traceable sources"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
-                            Button(onClick = onReview, enabled = dataLoaded && session != null && session?.status != SessionStatus.recording,
-                                shape = RoundedCornerShape(12.dp)) { Text(tr("整理这节课  →", "Review this class  →")) }
-                            Text(tr("发送前可查看所选文字，需你确认", "Preview and confirm before sending"), style = MaterialTheme.typography.labelSmall, color = palette.muted)
+                    Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        BasicText(
+                            tr("把这节课，整理成复习材料", "Turn this class into review notes"),
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.titleMedium.copy(color = palette.text, fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            softWrap = false,
+                            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 18.sp, stepSize = 0.5.sp),
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            NotebookIllustration(Modifier.size(72.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(tr("结合课程背景 · 保留原文入口", "Course context · Traceable sources"), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                                Button(onClick = onReview, enabled = dataLoaded && session != null && session?.status != SessionStatus.recording,
+                                    shape = RoundedCornerShape(12.dp)) { Text(tr("整理这节课  →", "Review this class  →")) }
+                                Text(tr("发送前可查看所选文字，需你确认", "Preview and confirm before sending"), style = MaterialTheme.typography.labelSmall, color = palette.muted)
+                            }
                         }
                     }
                 }
